@@ -1,0 +1,11 @@
+# DeepSeek-V2-Lite-Chat (16B total / 2.4B active, MLA + MoE): LoRA SFT sharded with FSDP2.
+# Needs ~32 GB for bf16 weights; shard across >= 2 GPUs.
+base: [../base.yaml, ../dist/fsdp2.yaml]
+run: {name: dsv2-lite-sft, output_dir: outputs/dsv2lite/sft}
+model: {path: deepseek-ai/DeepSeek-V2-Lite-Chat}
+data:
+  train: {hf: HuggingFaceTB/smoltalk, config: everyday-conversations, split: train}
+  max_length: 2048
+  loss_on: assistant
+lora: {enabled: true, r: 16, alpha: 32, target_modules: [q_proj, kv_a_proj_with_mqa, kv_b_proj, o_proj]}
+train: {stage: sft, epochs: 1, per_device_batch_size: 2, grad_accum: 4, lr: 1.0e-4}

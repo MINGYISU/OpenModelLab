@@ -1,0 +1,4 @@
+# E2: does loss masking matter? Same as the E1 LoRA arm but supervising prompt tokens too.
+base: e1_sft_lora_qwen2.5_1.5b.yaml
+run: {name: e2-sft-loss-all, output_dir: outputs/e2/loss-all}
+data: {loss_on: all}

@@ -1,0 +1,5 @@
+base: base.yaml
+run: {name: smoke-sft, output_dir: outputs/smoke/sft}
+train: {stage: sft}
+data: {train: examples/sft_train.jsonl, eval: examples/sft_eval.jsonl, loss_on: assistant}
+lora: {enabled: true, r: 4, alpha: 8}

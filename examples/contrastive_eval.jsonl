@@ -1,0 +1,2 @@
+{"query": "what is gqa", "positive": "Grouped-query attention shares key/value heads among query heads.", "negatives": ["Perplexity measures language model fit."]}
+{"query": "explain grpo", "positive": "GRPO normalizes rewards within groups of samples to compute advantages.", "negatives": ["LoRA adds adapters."]}

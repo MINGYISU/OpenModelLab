@@ -1,0 +1,12 @@
+# Qwen3 (hybrid thinking): SFT in non-thinking mode. Qwen3's template rewrites earlier
+# assistant turns, so assistant-only masking needs single-turn data (multi-turn is rejected).
+base: ../base.yaml
+run: {name: qwen3-sft-nothink, output_dir: outputs/qwen3/sft-nothink}
+model: {path: Qwen/Qwen3-1.7B}
+data:
+  train: {hf: HuggingFaceTB/smoltalk, config: everyday-conversations, split: train}
+  max_length: 2048
+  loss_on: all
+  chat_template_kwargs: {enable_thinking: false}
+lora: {enabled: true, r: 16, alpha: 32}
+train: {stage: sft, epochs: 1, per_device_batch_size: 4, grad_accum: 4, lr: 1.0e-4}

@@ -1,0 +1,5 @@
+base: base.yaml
+run: {name: smoke-embed, output_dir: outputs/smoke/embed}
+train: {stage: embed, per_device_batch_size: 4, grad_accum: 1}
+data: {train: examples/contrastive_train.jsonl, eval: examples/contrastive_eval.jsonl}
+embed: {pooling: last, gradcache: true, chunk_size: 2, temperature: 0.05}

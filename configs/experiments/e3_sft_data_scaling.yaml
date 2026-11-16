@@ -1,0 +1,15 @@
+# E3: data scaling. Sweep data.max_samples in {1000, 10000, 100000} with run.output_dir per size:
+#   for n in 1000 10000 100000; do scripts/train.sh configs/experiments/e3_sft_data_scaling.yaml \
+#     --set data.max_samples=$n --set run.output_dir=outputs/e3/n$n; done
+base: ../base.yaml
+run: {name: e3-sft-scaling, output_dir: outputs/e3/n1000}
+model: {path: Qwen/Qwen2.5-0.5B, tokenizer: Qwen/Qwen2.5-0.5B-Instruct}
+data:
+  train: {hf: HuggingFaceTB/smoltalk, config: all, split: train}
+  eval: {hf: HuggingFaceTB/smoltalk, config: all, split: test}
+  max_samples: 1000
+  max_eval_samples: 1000
+  max_length: 2048
+  loss_on: assistant
+lora: {enabled: true, r: 16, alpha: 32}
+train: {stage: sft, epochs: 2, per_device_batch_size: 8, grad_accum: 2, lr: 2.0e-4, eval_steps: 100}

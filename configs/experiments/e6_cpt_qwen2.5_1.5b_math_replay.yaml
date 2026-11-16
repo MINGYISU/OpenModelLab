@@ -1,0 +1,23 @@
+# E6: continued pre-training on math web text with general-domain replay.
+# Sweep data.replay_ratio in {0.0, 0.05, 0.25}; compare math PPL gain vs. general forgetting:
+#   finetune eval ppl --model outputs/e6/replay0.05 --data <held-out math/general JSONL>
+#   finetune eval benchmarks --model outputs/e6/replay0.05 --tasks mmlu,hellaswag
+base: [../base.yaml, ../dist/fsdp2.yaml]
+run: {name: e6-cpt-replay, output_dir: outputs/e6/replay0.05}
+model: {path: Qwen/Qwen2.5-1.5B}
+data:
+  train: {hf: open-web-math/open-web-math, split: train, streaming: true}
+  replay: {hf: HuggingFaceFW/fineweb-edu, config: sample-10BT, split: train, streaming: true}
+  replay_ratio: 0.05
+  max_length: 2048
+  packing: true
+train:
+  stage: pretrain
+  max_steps: 2000          # streaming data needs max_steps; tokens = steps * global batch * 2048
+  per_device_batch_size: 4
+  grad_accum: 4
+  lr: 2.0e-5
+  weight_decay: 0.1
+  scheduler: wsd
+  decay_ratio: 0.2
+  save_steps: 500

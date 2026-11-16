@@ -1,0 +1,16 @@
+# Tiny random models + tiny byte tokenizer: CPU-friendly, no downloads.
+base: ../base.yaml
+run:
+  report_to: none
+  overwrite: true
+model:
+  path: tiny:qwen2
+train:
+  max_steps: 4
+  per_device_batch_size: 2
+  grad_accum: 2
+  lr: 1.0e-3
+  logging_steps: 1
+  save_steps: 4
+data:
+  max_length: 512

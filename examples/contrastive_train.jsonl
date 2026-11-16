@@ -1,0 +1,6 @@
+{"query": "how does lora work", "positive": "LoRA freezes the base model and learns low-rank updates to linear layers.", "negatives": ["Cosine schedules decay the learning rate."]}
+{"query": "what is warmup", "positive": "Warmup increases the learning rate linearly during the first steps.", "negatives": ["Mixture-of-experts routes tokens to experts."]}
+{"query": "define fsdp", "positive": "FSDP shards model states across data-parallel workers.", "negatives": ["Tokenizers convert text into ids."]}
+{"query": "what is rope", "positive": "Rotary embeddings encode position by rotating query and key vectors.", "negatives": ["DPO uses preference pairs."]}
+{"query": "mixture of experts", "positive": "MoE layers send each token to a small subset of expert networks.", "negatives": ["Gradient clipping bounds the gradient norm."]}
+{"query": "contrastive loss", "positive": "InfoNCE treats the paired passage as the positive among in-batch negatives.", "negatives": ["Warmup avoids early instability."]}

@@ -1,0 +1,14 @@
+# E4 (preference arm): DPO on UltraFeedback from the instruct model. Watch logps/chosen: it often
+# *decreases* along with logps/rejected ("likelihood displacement") even as the margin grows.
+base: ../base.yaml
+run: {name: e4-dpo, output_dir: outputs/e4/dpo}
+model: {path: Qwen/Qwen2.5-0.5B-Instruct}
+data:
+  train: {hf: HuggingFaceH4/ultrafeedback_binarized, split: train_prefs}
+  eval: {hf: HuggingFaceH4/ultrafeedback_binarized, split: test_prefs}
+  max_samples: 20000
+  max_eval_samples: 500
+  max_length: 1536
+lora: {enabled: true, r: 16, alpha: 32}
+dpo: {beta: 0.1, loss_type: sigmoid, max_prompt_length: 1024}
+train: {stage: dpo, epochs: 1, per_device_batch_size: 4, grad_accum: 4, lr: 5.0e-6, warmup_ratio: 0.1, eval_steps: 200}

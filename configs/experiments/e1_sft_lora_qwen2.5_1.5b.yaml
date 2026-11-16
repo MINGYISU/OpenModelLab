@@ -1,0 +1,22 @@
+# E1: how much does SFT change weights vs. outputs? LoRA arm (r=8; try --set lora.r=64).
+# Full-parameter arm: e1_sft_full_qwen2.5_1.5b.yaml (same data, seed, steps).
+#   scripts/train.sh configs/experiments/e1_sft_lora_qwen2.5_1.5b.yaml
+#   finetune analyze weights --base Qwen/Qwen2.5-1.5B --tuned outputs/e1/lora-r8
+base: ../base.yaml
+run: {name: e1-sft-lora-r8, output_dir: outputs/e1/lora-r8}
+model: {path: Qwen/Qwen2.5-1.5B, tokenizer: Qwen/Qwen2.5-1.5B-Instruct}
+data:
+  train: {hf: HuggingFaceTB/smoltalk, config: everyday-conversations, split: train}
+  eval: {hf: HuggingFaceTB/smoltalk, config: everyday-conversations, split: test}
+  max_length: 2048
+  loss_on: assistant
+lora: {enabled: true, r: 8, alpha: 16, dropout: 0.05, target_modules: all-linear}
+train:
+  stage: sft
+  epochs: 2
+  per_device_batch_size: 8
+  grad_accum: 2           # global batch = 8 * 2 * n_gpus sequences
+  lr: 2.0e-4              # LoRA tolerates ~10x the full-FT learning rate
+  weight_decay: 0.0
+  eval_steps: 100
+  save_steps: 500

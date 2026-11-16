@@ -1,0 +1,34 @@
+# E9 / MoE study: a small DeepSeek-V3-architecture model (MLA + fine-grained MoE with shared
+# experts) trained from scratch, so routing can be studied with
+#   finetune analyze router --base <checkpoint A> --tuned <checkpoint B> --data <texts>
+base: ../base.yaml
+run: {name: moe-v3-small, output_dir: outputs/moe/v3-small}
+model:
+  path: tiny:deepseek_v3
+  tokenizer: Qwen/Qwen2.5-0.5B
+  dtype: float32
+  config_overrides:
+    vocab_size: 151936
+    hidden_size: 512
+    intermediate_size: 1536
+    moe_intermediate_size: 256
+    num_hidden_layers: 8
+    num_attention_heads: 8
+    num_key_value_heads: 8
+    n_routed_experts: 16
+    num_experts_per_tok: 4
+    n_group: 4
+    topk_group: 2
+    first_k_dense_replace: 1
+    kv_lora_rank: 128
+    q_lora_rank: 256
+    qk_rope_head_dim: 32
+    qk_nope_head_dim: 32
+    v_head_dim: 64
+    max_position_embeddings: 2048
+data:
+  train: {hf: HuggingFaceFW/fineweb-edu, config: sample-10BT, split: train, streaming: true}
+  max_length: 1024
+  packing: true
+train: {stage: pretrain, backend: loop, max_steps: 10000, per_device_batch_size: 16, grad_accum: 2,
+        lr: 6.0e-4, weight_decay: 0.1, scheduler: wsd, warmup_steps: 500, save_steps: 2000, logging_steps: 20}

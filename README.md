@@ -1,127 +1,126 @@
 # FineTune
 
-A Python research starter for learning custom-dataset fine-tuning, embeddings,
-NLP, and LLM post-training with Hugging Face models such as Qwen and
-DeepSeek's Qwen-based distilled models.
+A research codebase for **pre-training, continued pre-training, embedding training,
+and post-training (SFT, DPO, GRPO)** of open LLMs (Qwen2/2.5, Qwen3,
+DeepSeek-R1-Distill, DeepSeek-V2/V3, and Llama-style models). It also includes tools to
+measure **how each training stage changes a model's behavior**.
+
+The research roadmap and experiment matrix are in [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md);
+learning notes live in [docs/notes/](docs/notes/).
+
+Design:
+
+- **Vendored model source**: `src/finetune/models/<family>/modeling_*.py` are copied
+  from the pinned `transformers` release and are what actually runs. There is no `AutoModel*`
+  and no `trust_remote_code`. Tests check that the logits match upstream exactly. See
+  [VENDORED.md](src/finetune/models/VENDORED.md).
+- **Still built on the ecosystem**: `transformers` (`PreTrainedModel`, tokenizers,
+  `Trainer`, generation), `peft`, `accelerate`, `datasets`, DeepSpeed.
+- **Everything explicit**: the optimizer parameter groups, LR schedules, a
+  from-scratch LoRA, a raw PyTorch DDP training loop, the DPO/GRPO losses, and
+  GradCache are all small, readable modules with tests.
+- **Config-driven and reproducible**: YAML configs with inheritance; every run writes
+  `resolved_config.json` and `experiment.json` (git SHA, library versions, GPUs,
+  dataset hashes, resolved model revision).
 
 ## Setup
 
-Use Python 3.11+ in a virtual environment. From the repository root:
+```bash
+conda create -n finetune python=3.12 -y && conda activate finetune
+pip install -e '.[ml]'            # torch, transformers, peft, accelerate, datasets
+pip install -e '.[rl,dist,eval]'  # optional: trl, deepspeed, lm-eval + mteb
+python -m unittest discover -s tests   # CPU-only, offline (~30 s)
+```
+
+## Layout
+
+```text
+src/finetune/
+  models/        vendored qwen2, qwen3, llama, deepseek_v2, deepseek_v3 + registry (build without AutoModel)
+  data/          JSONL/HF loading, chat-template SFT masks, packing, preference, RL, contrastive, collators
+  training/      causal_lm (pretrain/SFT), dpo, grpo, embedding (GradCache), loop (raw DDP loop),
+                 optim (param groups, warmup/cosine/WSD), lora (PEFT + from-scratch), rewards
+  eval/          generation, perplexity, reasoning (pass@k, think-trace stats), retrieval, lm-eval
+  eval/behavior/ weight_diff, kl_drift, logit_lens, representation (CKA), moe_router
+configs/         base.yaml, smoke/ (tiny runs), experiments/ (E1-E9 and more), dist/ (DDP, FSDP2, ZeRO-2/3)
+scripts/         train.sh (single node), train_multinode.{sh,sbatch}, vendor_models.py
+examples/        tiny datasets for every format
+```
+
+## Running
+
+Every stage uses the same command; `train.stage` in the config picks the pipeline.
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
-finetune validate --data examples/train.jsonl
+# Smoke test any stage on a tiny random model + byte tokenizer (no downloads):
+finetune train configs/smoke/sft.yaml          # also: pretrain, dpo, grpo, embed
 
-# Install only when running models (large downloads, including PyTorch):
-python -m pip install -e '.[ml]'
+# Real experiments: one GPU, or all visible GPUs via torchrun (DDP by default):
+scripts/train.sh configs/experiments/e1_sft_lora_qwen2.5_1.5b.yaml
+CUDA_VISIBLE_DEVICES=0,1,2,3 scripts/train.sh configs/experiments/e1_sft_full_qwen2.5_1.5b.yaml  # FSDP2
+
+# Override anything from the command line; print the resolved config without training:
+finetune train configs/experiments/e4_dpo_qwen2.5_0.5b_ultrafeedback.yaml --set dpo.beta=0.3 --dry-run
+
+# Multi-node (SLURM, or MASTER_ADDR/NNODES/NODE_RANK without SLURM):
+sbatch --nodes 2 scripts/train_multinode.sbatch configs/experiments/e6_cpt_qwen2.5_1.5b_math_replay.yaml
 ```
 
-For CPU-only installations, run
-`python -m pip install torch==2.15.0 --index-url https://download.pytorch.org/whl/cpu`
-before installing the ML extra (see [PyTorch installation guidance](https://pytorch.org/get-started/locally/)).
-Model commands download weights on first use; review each model's
-license, access requirements, and hardware needs before downloading. Only
-models supported natively by Transformers with safetensors weights are loaded;
-remote Python model code is never enabled.
+A single process (`finetune train` without torchrun) uses one GPU. Use
+`scripts/train.sh` / `torchrun` for multi-GPU; otherwise `Trainer` would fall back to
+legacy `nn.DataParallel`.
 
-## Custom datasets
+| Stage | Pipeline | Notes |
+| --- | --- | --- |
+| `pretrain` | `training/causal_lm.py` | packing, streaming HF datasets, replay mixing; `model.init: scratch` for random init |
+| `sft` | `training/causal_lm.py` | native chat templates; `data.loss_on: all \| assistant` |
+| `dpo` | `training/dpo.py` | sigmoid / IPO / SimPO; reference log-probs precomputed from the initial policy |
+| `grpo` | `training/grpo.py` | explicit rollout → reward → group advantage → clipped objective + k3 KL loop |
+| `embed` | `training/embedding.py` | InfoNCE, mean/last/cls pooling, GradCache, cross-GPU negatives |
 
-Provide UTF-8 JSONL: one conversation per line, with alternating `user` and
-`assistant` messages and an optional initial `system` message. Every conversation
-must end with an assistant answer. For example:
+Backends: `train.backend: trainer` (transformers `Trainer`, which supports DDP, FSDP2,
+and DeepSpeed ZeRO-2/3) or `loop` (our raw PyTorch DDP loop for pretrain/SFT, with
+exact resume). GRPO always uses its own DDP loop. Distributed fragments compose via
+`base: [../base.yaml, ../dist/fsdp2.yaml]`.
 
-```json
-{"messages":[{"role":"user","content":"What is LoRA?"},{"role":"assistant","content":"A parameter-efficient method that trains low-rank adapters."}]}
-```
+### Data formats (JSONL or `{hf: name, config:, split:, streaming:}`)
 
-The original toy examples in `examples/train.jsonl` and `examples/eval.jsonl`
-are smoke-test inputs, **not** a meaningful benchmark. Put your own data under
-`data/` (gitignored), remove secrets and personal information, verify consent and
-licensing, deduplicate, and split training/evaluation by source or document
-before training. Validation reports malformed JSON and schema errors with line
-numbers. Training rejects exact conversation overlap between train/evaluation
-files; semantic duplicates still require manual dataset curation.
+| Format | Record |
+| --- | --- |
+| pretrain | `{"text": "..."}` |
+| SFT | `{"messages": [{"role": "system"\|"user"\|"assistant", "content": "..."}]}` (ends with assistant) |
+| preference | `{"prompt": str or messages, "chosen": str or messages, "rejected": ...}` (UltraFeedback works as-is) |
+| RL | `{"prompt"\|"question": "...", "answer": "..."}` (GSM8K `####` handled) or Countdown `{"target", "nums"}` |
+| contrastive | `{"query": "...", "positive"\|"answer": "...", "negatives": [...]}` |
 
-## Supervised post-training with LoRA
+Overlength SFT/preference examples are rejected rather than silently truncated.
+Exact train/eval overlap is rejected; semantic duplicates still need curation.
 
-Start with a small instruction/chat checkpoint:
+## Evaluating and analyzing behavior change
 
 ```bash
-finetune train \
-  --model Qwen/Qwen2.5-0.5B-Instruct \
-  --data examples/train.jsonl \
-  --eval-data examples/eval.jsonl \
-  --output-dir outputs/qwen-lora \
-  --epochs 1 --max-length 1024 --batch-size 1 \
-  --gradient-accumulation-steps 8 --seed 42
+finetune generate --model Qwen/Qwen2.5-0.5B-Instruct --prompt "Explain LoRA."
+finetune generate --model outputs/e1/lora-r8 --prompt "Explain LoRA."      # PEFT dir: base read automatically
+finetune eval ppl --model outputs/e6/replay0.05 --data heldout.jsonl
+finetune eval reasoning --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B --data gsm8k_test.jsonl \
+    --samples 8 --temperature 0.6 --max-new-tokens 4096 --output samples.jsonl   # pass@k, think length, "wait" counts
+finetune eval reasoning --model Qwen/Qwen3-1.7B --data gsm8k_test.jsonl --template-kwargs '{"enable_thinking": false}'
+finetune eval retrieval --model outputs/embed/nq --data heldout_pairs.jsonl
+finetune eval benchmarks --model outputs/e1/full --tasks gsm8k,mmlu         # lm-eval with the vendored model
+
+finetune analyze weights    --base Qwen/Qwen2.5-1.5B --tuned outputs/e1/full   # per-layer/module |dW|, effective rank
+finetune analyze kl         --base ... --tuned ... --data texts.jsonl           # token-level KL; most boosted/suppressed tokens
+finetune analyze logit-lens --base ... --tuned ... --data prompt_answer.jsonl   # layer where the answer emerges
+finetune analyze cka        --base ... --tuned ... --data texts.jsonl           # representation similarity per layer
+finetune analyze router     --base ... --tuned ... --data texts.jsonl           # MoE expert-usage shift
 ```
 
-For a larger DeepSeek experiment, substitute
-`--model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B` and use a separate output
-directory. These are starting checkpoints, not a promise of compatibility with
-every Qwen/DeepSeek architecture. Follow each model card's prompt conventions;
-some reasoning models discourage system prompts, so remove those turns from
-your dataset when appropriate.
+Use `--output result.json` for the full tables (per parameter or per expert).
 
-The baseline freezes the base weights and trains rank-8 LoRA adapters on linear
-layers using the tokenizer's native chat template. Loss covers **all non-padding
-conversation tokens**, including prompts; this is not assistant-only masking.
-Overlength conversations are rejected rather than silently truncating answers.
-Padding labels are masked with `-100`, preserving real EOS labels. No external
-experiment tracker is enabled.
+## Reproducibility and responsible use
 
-The output contains the adapter, tokenizer, checkpoints, training/evaluation
-loss metrics, and `experiment.json` with arguments, seed, library versions, and
-resolved base-model commit when available. Existing nonempty output directories
-are rejected. Supply `--revision <model-commit-sha>` to pin model/tokenizer
-downloads; retain the exact dataset and environment (`pip freeze`) alongside
-your experiment. Seeds alone do not guarantee identical results across devices.
-
-This is single-device, unquantized training: LoRA reduces trainable parameters
-but still loads the full base model. CUDA uses BF16 when supported, otherwise
-FP32; CPU is supported for small smoke tests but can be very slow. Memory depends
-on model size, sequence length, and batch size. QLoRA, distributed training, DPO,
-and reinforcement-learning post-training are not implemented.
-
-## Compare the base model and adapter
-
-```bash
-finetune generate --model Qwen/Qwen2.5-0.5B-Instruct \
-  --prompt "Explain supervised fine-tuning."
-finetune generate --model Qwen/Qwen2.5-0.5B-Instruct \
-  --adapter outputs/qwen-lora --prompt "Explain supervised fine-tuning."
-```
-
-Generation is greedy and prints only newly generated text. Always use the same
-base model and revision used to train the adapter. Use held-out prompts to
-compare task quality, factuality, safety, and forgetting; evaluation loss alone
-does not establish an improvement.
-
-## Embeddings and NLP experiments
-
-```bash
-finetune embed --model sentence-transformers/all-MiniLM-L6-v2 \
-  --text "Fine-tuning adapts a language model." \
-  --text "LoRA trains lightweight adapters."
-```
-
-The command prints a JSON array of L2-normalized vectors using attention-mask
-aware mean pooling. It is a baseline for encoder models trained for mean pooling,
-not a universal embedding recipe for arbitrary causal LLMs. Inputs are truncated
-at `--max-length` (default 512); respect the checkpoint's own context limit.
-Compare dot products as cosine similarity, then study retrieval, clustering,
-and classification on held-out labeled data. Models requiring special pooling,
-query prefixes, or custom modules need their model-specific implementation.
-
-## Local checks
-
-```bash
-python -m unittest discover -s tests -v
-finetune --help
-finetune validate --data examples/eval.jsonl
-```
-
-Unit tests run without ML packages, GPUs, or network access. Real training and
-embedding experiments require the optional ML stack and model weights.
+Pin `model.revision` to a commit SHA for published results, keep data under the
+gitignored `data/` folder, and record `pip freeze`. Seeds do not guarantee bitwise
+determinism across GPUs or kernels. Check each model's and dataset's license
+(Llama is gated; Qwen and DeepSeek have their own licenses) and remove personal or
+secret data before training.

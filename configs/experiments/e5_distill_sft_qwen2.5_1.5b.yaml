@@ -1,0 +1,10 @@
+# E5 (distillation arm): SFT a base model on DeepSeek-R1 reasoning traces (OpenR1-Math).
+base: [../base.yaml, ../dist/fsdp2.yaml]
+run: {name: e5-distill-sft, output_dir: outputs/e5/distill}
+model: {path: Qwen/Qwen2.5-1.5B, tokenizer: Qwen/Qwen2.5-1.5B-Instruct}
+data:
+  train: {hf: open-r1/OpenR1-Math-220k, split: train}
+  max_samples: 20000
+  max_length: 8192
+  loss_on: assistant
+train: {stage: sft, epochs: 1, per_device_batch_size: 1, grad_accum: 8, lr: 5.0e-5, weight_decay: 0.0, save_steps: 500}

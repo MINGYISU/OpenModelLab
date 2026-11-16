@@ -1,0 +1,4 @@
+base: base.yaml
+run: {name: smoke-pretrain, output_dir: outputs/smoke/pretrain}
+train: {stage: pretrain, scheduler: wsd, weight_decay: 0.1}
+data: {train: examples/pretrain_train.jsonl, eval: examples/pretrain_eval.jsonl, packing: true, max_length: 128}

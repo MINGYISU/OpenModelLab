@@ -1,0 +1,2 @@
+{"prompt": "What is FSDP?", "chosen": "FSDP shards parameters, gradients, and optimizer states across data-parallel ranks.", "rejected": "FSDP is a file format."}
+{"prompt": "What is GRPO?", "chosen": "GRPO estimates advantages by normalizing rewards within a group of sampled answers.", "rejected": "GRPO is a grocery store."}

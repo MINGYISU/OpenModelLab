@@ -1,0 +1,6 @@
+base: base.yaml
+run: {name: smoke-grpo, output_dir: outputs/smoke/grpo}
+train: {stage: grpo, max_steps: 2, lr: 1.0e-4}
+data: {train: examples/rl_train.jsonl, eval: examples/rl_eval.jsonl}
+lora: {enabled: true, r: 4, alpha: 8}
+grpo: {group_size: 4, prompts_per_step: 2, max_new_tokens: 16, updates_per_batch: 2}

@@ -1,0 +1,21 @@
+# Embedding training: turn a decoder LLM into a retriever (last-token pooling + instructions),
+# contrastive InfoNCE with in-batch + cross-GPU negatives and GradCache for large batches.
+# E7 sweep: train.per_device_batch_size in {8, 64, 512} (effective negatives = batch * n_gpus).
+#   finetune eval retrieval --model outputs/embed/nq --data <held-out query/positive JSONL>
+base: ../base.yaml
+run: {name: embed-nq, output_dir: outputs/embed/nq}
+model: {path: Qwen/Qwen2.5-0.5B}
+data:
+  train: {hf: sentence-transformers/natural-questions, config: pair, split: train}
+  max_samples: 90000
+lora: {enabled: true, r: 16, alpha: 32}
+embed:
+  pooling: last
+  temperature: 0.02
+  query_prefix: "Instruct: Given a question, retrieve passages that answer it\nQuery: "
+  gradcache: true
+  chunk_size: 32
+  gather_across_ranks: true
+  max_query_length: 64
+  max_passage_length: 256
+train: {stage: embed, epochs: 1, per_device_batch_size: 256, grad_accum: 1, lr: 1.0e-4, logging_steps: 10}

@@ -1,0 +1,6 @@
+# E1 full-parameter arm. fp32 master weights + bf16 autocast; FSDP2 shards states across GPUs.
+#   NGPU=4 scripts/train.sh configs/experiments/e1_sft_full_qwen2.5_1.5b.yaml
+base: [e1_sft_lora_qwen2.5_1.5b.yaml, ../dist/fsdp2.yaml]
+run: {name: e1-sft-full, output_dir: outputs/e1/full}
+lora: {enabled: false}
+train: {lr: 2.0e-5, weight_decay: 0.1}

@@ -1,0 +1,19 @@
+# E5 (RL arm): "R1-Zero"-style RL from a *base* model (no chat template, no SFT) on Countdown
+# (TinyZero). Track completion_tokens and completions.jsonl for emerging longer traces and
+# self-verification. Compare with e5_distill_sft_qwen2.5_1.5b.yaml at matched compute.
+base: ../base.yaml
+run: {name: e5-r1zero-countdown, output_dir: outputs/e5/r1zero}
+model: {path: Qwen/Qwen2.5-1.5B, gradient_checkpointing: true}
+data:
+  train: {hf: Jiayi-Pan/Countdown-Tasks-3to4, split: train}
+  max_samples: 50000
+lora: {enabled: true, r: 64, alpha: 128, dropout: 0.0}
+grpo:
+  use_chat_template: false
+  group_size: 8
+  prompts_per_step: 8
+  max_new_tokens: 1024
+  beta: 0.001
+  rewards: [countdown, format]
+  reward_weights: [1.0, 0.1]
+train: {stage: grpo, max_steps: 1000, per_device_batch_size: 16, lr: 1.0e-5, warmup_ratio: 0.01, logging_steps: 1}

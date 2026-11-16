@@ -1,0 +1,6 @@
+{"prompt": "What is LoRA?", "chosen": "LoRA trains small low-rank adapter matrices while the base weights stay frozen.", "rejected": "LoRA is a kind of radio."}
+{"prompt": "Why use warmup?", "chosen": "Warmup ramps the learning rate up so early updates do not destabilize training.", "rejected": "Warmup is for athletes."}
+{"prompt": "What does DPO need?", "chosen": "DPO needs prompts with a preferred and a rejected response.", "rejected": "DPO needs nothing at all."}
+{"prompt": "What is gradient clipping?", "chosen": "Gradient clipping rescales gradients whose norm exceeds a threshold.", "rejected": "It cuts the model in half."}
+{"prompt": "What is a tokenizer?", "chosen": "A tokenizer maps text to integer token ids and back.", "rejected": "A tokenizer is a coin machine."}
+{"prompt": "What is perplexity?", "chosen": "Perplexity is the exponential of the average negative log-likelihood per token.", "rejected": "Perplexity means confusion, nothing more."}

@@ -1,0 +1,16 @@
+# Defaults shared by every experiment. Experiment configs set `base: ../base.yaml`
+# (path relative to the including file) and override what they need.
+run:
+  seed: 42
+  report_to: tensorboard
+train:
+  precision: bf16
+  max_grad_norm: 1.0
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  scheduler: cosine
+  warmup_ratio: 0.03
+  logging_steps: 10
+model:
+  dtype: bfloat16
+  attn_implementation: sdpa

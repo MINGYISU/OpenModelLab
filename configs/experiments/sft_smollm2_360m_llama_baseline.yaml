@@ -1,0 +1,4 @@
+# Llama-architecture baseline (SmolLM2, openly licensed) for architecture comparisons (E9).
+base: e1_sft_lora_qwen2.5_1.5b.yaml
+run: {name: smollm2-sft, output_dir: outputs/e9/smollm2}
+model: {path: HuggingFaceTB/SmolLM2-360M, tokenizer: HuggingFaceTB/SmolLM2-360M-Instruct}

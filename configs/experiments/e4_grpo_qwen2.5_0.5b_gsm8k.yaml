@@ -1,0 +1,16 @@
+# E4 (RL arm): GRPO with verifiable GSM8K rewards from the instruct model.
+base: ../base.yaml
+run: {name: e4-grpo-gsm8k, output_dir: outputs/e4/grpo}
+model: {path: Qwen/Qwen2.5-0.5B-Instruct, gradient_checkpointing: true}
+data:
+  train: {hf: openai/gsm8k, config: main, split: train}
+lora: {enabled: true, r: 32, alpha: 64, dropout: 0.0}
+grpo:
+  group_size: 8
+  prompts_per_step: 8      # per GPU -> 64 completions per GPU per step
+  max_new_tokens: 512
+  temperature: 1.0
+  beta: 0.04
+  rewards: [correctness, format]
+  reward_weights: [1.0, 0.2]
+train: {stage: grpo, max_steps: 500, per_device_batch_size: 16, lr: 1.0e-5, warmup_ratio: 0.02, logging_steps: 1}
