@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local research data and model artifacts
+/data/
+/outputs/
+/checkpoints/
+*.safetensors
+*.pt
+*.pth

@@ -1,0 +1,3 @@
+{"messages":[{"role":"system","content":"You are a concise NLP research assistant."},{"role":"user","content":"What is supervised fine-tuning?"},{"role":"assistant","content":"Supervised fine-tuning trains a pretrained model on labeled examples of desired inputs and responses."}]}
+{"messages":[{"role":"user","content":"What does LoRA train?"},{"role":"assistant","content":"LoRA trains low-rank adapter matrices while keeping the pretrained model weights frozen."}]}
+{"messages":[{"role":"user","content":"Why use a held-out evaluation set?"},{"role":"assistant","content":"A held-out set measures generalization on examples not used for training."}]}
