@@ -34,6 +34,8 @@ class ModelConfig:
     tokenizer: str | None = None       # defaults to `path`
     init: str = "pretrained"           # "pretrained" or "scratch" (random init from config)
     config_overrides: dict = field(default_factory=dict)
+    variant: str | None = None         # your architecture: name in src/finetune/variants/ or a .py path
+    variant_args: dict = field(default_factory=dict)  # overrides the variant's ARGS (ablations)
     dtype: str = "bfloat16"            # "bfloat16", "float16", "float32"
     attn_implementation: str = "sdpa"  # "eager", "sdpa", "flash_attention_2"
     gradient_checkpointing: bool = False

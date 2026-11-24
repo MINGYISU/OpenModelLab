@@ -1,0 +1,23 @@
+# Smoke study: tiny random models + the example SFT data, CPU-only, no downloads (~2 min).
+#   finetune study configs/studies/smoke.yaml --dry-run
+#   finetune study configs/studies/smoke.yaml
+# Scores are meaningless (random tiny models); this checks the whole pipeline runs.
+name: smoke-study
+train_config: ../smoke/sft.yaml        # relative to this file
+output_root: outputs/smoke/study
+results_dir: outputs/smoke/study_results
+seeds: [1, 2]
+set: [lora.enabled=false, train.max_steps=2, train.precision=fp32]
+datasets:
+  - {name: smoke, train: examples/sft_train.jsonl, eval: examples/sft_eval.jsonl}
+models:
+  - {label: Tiny (reference), path: "tiny:qwen2", train: false}
+  - {label: Tiny + SFT, path: "tiny:qwen2"}
+  - {label: LayerScale-LM, path: "tiny:qwen2", variant: layerscale, variant_args: {init: 0.1}}
+eval:
+  metrics: [exact_match, f1, rouge_l]
+  max_new_tokens: 8
+  bootstrap: 100
+report:
+  baseline: Tiny + SFT
+  percent: true

@@ -26,6 +26,13 @@ EVAL_RATIO = 0.05
 
 SYSTEM_PROMPT = None  # e.g. "You are a helpful assistant." (added to every example if set)
 
+# ---- Evaluation (finetune eval task --recipe <your_dataset>, and studies) -----------------------
+# Prefer built-in metrics; see `finetune score --help` and src/finetune/eval/metrics.py:
+#   exact_match, contains, f1, rouge_l, bleu, numeric_match, choice, length
+METRICS = ["exact_match", "f1"]   # TODO: e.g. ["choice"] for multiple choice, ["numeric_match"] for math
+EXTRACT = "strip_think"           # prediction cleanup: strip_think, answer_tag, first_line, last_number, choice, none
+GENERATION = {"max_new_tokens": 256, "temperature": 0.0}
+
 
 def convert(row: dict):
     """Turn one raw row into one standard record (or a list of records, or None to skip it).
@@ -55,3 +62,16 @@ def convert(row: dict):
 #     import csv
 #     with open("raw/my_dataset.csv", newline="", encoding="utf-8") as handle:
 #         return list(csv.DictReader(handle))
+
+
+# Optional evaluation hooks. Defaults: SFT prompt = conversation minus the last assistant turn,
+# reference = that turn; RL prompt = "prompt"/"question", reference = "answer".
+# def build_prompt(record):          # -> str or list of messages
+#     return record["messages"][:-1]
+# def reference(record):             # -> str or list of acceptable strings
+#     return record["messages"][-1]["content"]
+
+# Only when no built-in metric fits: a dataset-specific metric (averaged + bootstrapped like the
+# built-ins). Return a float, or a dict to report several named scores.
+# def metric(prediction: str, reference: str, record: dict):
+#     return float(prediction.strip().lower().startswith(reference.strip().lower()))

@@ -9,6 +9,8 @@ A recipe module defines:
   convert(row)  raw row -> standard record, a list of records, or None to skip the row
   load(split)   optional: replaces SOURCE/EVAL_SOURCE for custom files (CSV, zip, ...);
                 `split` is "train" or "eval"; return None for "eval" to split off EVAL_RATIO
+  METRICS, EXTRACT, GENERATION, build_prompt(record), reference(record), metric(...)
+                optional evaluation hooks for `finetune eval task` (see finetune/eval/tasks.py)
 
 Recipes live in this package (files starting with "_" are ignored), or can be passed
 to `finetune prepare` as a path to any .py file.

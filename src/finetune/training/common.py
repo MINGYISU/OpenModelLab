@@ -14,12 +14,24 @@ from finetune import utils
 from finetune.models import build_model
 from finetune.training.lora import apply_lora, count_parameters, merge_for_save
 from finetune.training.optim import build_optimizer, build_scheduler
+from finetune.variants import load_variant_state, new_parameters, save_variant_files, snapshot_initial_values
+
+
+class VariantCheckpointCallback(transformers.TrainerCallback):
+    """Write variant.json / variant_state.safetensors into every checkpoint-N, so intermediate
+    LoRA checkpoints of a variant can be evaluated and resumed (PEFT saves only the adapter)."""
+
+    def on_save(self, args, state, control, model=None, **kwargs):
+        if state.is_world_process_zero and model is not None:
+            save_variant_files(model, f"{args.output_dir}/checkpoint-{state.global_step}")
 
 
 class ResearchTrainer(transformers.Trainer):
     def __init__(self, *args, research_config=None, **kwargs):
         self.research_config = research_config
         super().__init__(*args, **kwargs)
+        if new_parameters(self.model):
+            self.add_callback(VariantCheckpointCallback())
 
     def create_optimizer(self, model=None):
         if self.optimizer is None:
@@ -63,6 +75,13 @@ def setup_model(config, causal_lm: bool = True, task_type: str = "CAUSAL_LM"):
         if config.lora.enabled:
             model.enable_input_require_grads()
     model = apply_lora(model, config.lora, task_type=task_type)
+    if config.lora.enabled and new_parameters(model):
+        # Components a variant added have no pretrained values to keep frozen; train them.
+        for param in new_parameters(model).values():
+            param.requires_grad_(True)
+        snapshot_initial_values(model)
+        if config.train.resume_from and load_variant_state(model, config.train.resume_from):
+            utils.log(f"restored variant parameters from {config.train.resume_from}")
     trainable, total = count_parameters(model)
     utils.log(f"model {type(model).__name__}: trainable {trainable:,} / {total:,} ({100 * trainable / total:.2f}%)")
     return model

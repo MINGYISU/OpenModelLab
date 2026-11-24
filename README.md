@@ -8,6 +8,12 @@ measure **how each training stage changes a model's behavior**.
 The research roadmap and experiment matrix are in [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md);
 learning notes live in [docs/notes/](docs/notes/).
 
+**Doing architecture research?** Read [docs/RESEARCH_WORKFLOW.md](docs/RESEARCH_WORKFLOW.md): write
+your model as a named *variant* of a reference model (add/remove/replace components without
+touching the reference source), list references and variants × datasets × seeds in a *study*
+YAML, and `finetune study` trains, evaluates, and writes paper-ready tables (markdown, CSV, LaTeX)
+with seed spread and significance tests.
+
 **Just want to fine-tune on your own data?** Read [docs/ADDING_A_DATASET.md](docs/ADDING_A_DATASET.md):
 write a small recipe for the dataset, run `finetune prepare <name>`, copy
 `configs/templates/sft_my_dataset.yaml`, and train.
@@ -17,7 +23,10 @@ Design:
 - **Vendored model source**: `src/finetune/models/<family>/modeling_*.py` are copied
   from the pinned `transformers` release and are what actually runs. There is no `AutoModel*`
   and no `trust_remote_code`. Tests check that the logits match upstream exactly. See
-  [VENDORED.md](src/finetune/models/VENDORED.md).
+  [VENDORED.md](src/finetune/models/VENDORED.md). These are the untouched *reference* models.
+- **Your models are variants**: `src/finetune/variants/<name>.py` edits a built reference model
+  (`model.variant: <name>`, `model.variant_args: {...}` for ablations). Checkpoints record the
+  variant and reload without extra flags.
 - **Still built on the ecosystem**: `transformers` (`PreTrainedModel`, tokenizers,
   `Trainer`, generation), `peft`, `accelerate`, `datasets`, DeepSpeed.
 - **Everything explicit**: the optimizer parameter groups, LR schedules, a
@@ -41,12 +50,17 @@ python -m unittest discover -s tests   # CPU-only, offline (~30 s)
 ```text
 src/finetune/
   models/        vendored qwen2, qwen3, llama, deepseek_v2, deepseek_v3 + registry (build without AutoModel)
+  variants/      your architectures as edits of a reference: layerscale, no_glu, drop_layers, _template
   data/          JSONL/HF loading, chat-template SFT masks, packing, preference, RL, contrastive, collators
+  data/recipes/  one module per dataset: preprocessing + METRICS (finetune prepare / eval task)
   training/      causal_lm (pretrain/SFT), dpo, grpo, embedding (GradCache), loop (raw DDP loop),
                  optim (param groups, warmup/cosine/WSD), lora (PEFT + from-scratch), rewards
-  eval/          generation, perplexity, reasoning (pass@k, think-trace stats), retrieval, lm-eval
+  eval/          generation, tasks + metrics (EM/F1/ROUGE-L/BLEU/..., bootstrap CIs), results + report,
+                 perplexity, reasoning (pass@k, think-trace stats), retrieval, lm-eval
   eval/behavior/ weight_diff, kl_drift, logit_lens, representation (CKA), moe_router
-configs/         base.yaml, smoke/ (tiny runs), experiments/ (E1-E9 and more), dist/ (DDP, FSDP2, ZeRO-2/3)
+  study.py       models x datasets x seeds: train -> eval -> report
+configs/         base.yaml, smoke/ (tiny runs), experiments/ (E1-E9 and more), dist/ (DDP, FSDP2, ZeRO-2/3),
+                 studies/ (study YAMLs), templates/
 scripts/         train.sh (single node), train_multinode.{sh,sbatch}, vendor_models.py
 examples/        tiny datasets for every format
 ```
@@ -103,6 +117,13 @@ Exact train/eval overlap is rejected; semantic duplicates still need curation.
 ## Evaluating and analyzing behavior change
 
 ```bash
+# Score a model on a dataset with the dataset's own metrics (from its recipe); --results stores a
+# record for reports. `finetune score` computes the same metrics for any predictions JSONL.
+finetune eval task --recipe alpaca --model outputs/e1/full --label "Qwen2.5-1.5B + SFT" --results results/e1
+finetune score preds.jsonl --metrics exact_match,f1,rouge_l
+finetune report results/e1 --baseline "Qwen2.5-1.5B + SFT" --percent --out results/e1   # report.md, results.csv, table.tex
+finetune study configs/studies/smoke.yaml       # a whole study (models x datasets x seeds) on CPU
+
 finetune generate --model Qwen/Qwen2.5-0.5B-Instruct --prompt "Explain LoRA."
 finetune generate --model outputs/e1/lora-r8 --prompt "Explain LoRA."      # PEFT dir: base read automatically
 finetune eval ppl --model outputs/e6/replay0.05 --data heldout.jsonl

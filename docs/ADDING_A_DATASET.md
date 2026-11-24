@@ -95,6 +95,33 @@ For a non-SFT format, start from the matching config in `configs/experiments/` i
 | Full fine-tune instead of LoRA | `lora.enabled: false`, `train.lr: 1.0e-5` |
 | Multi-turn Qwen3 data fails assistant masking | `data.loss_on: all` |
 
+## Step 4. Evaluate with the dataset's metrics
+
+Scoring is declared in the recipe, so every model is evaluated the same way. Pick built-in metrics
+first: `exact_match`, `contains`, `f1`, `rouge_l`, `bleu`, `numeric_match`, `choice`
+(see [metrics.py](../src/finetune/eval/metrics.py)).
+
+```python
+METRICS = ["exact_match", "f1"]      # short answers; ["choice"] multiple choice; ["numeric_match"] math
+EXTRACT = "strip_think"              # or answer_tag, first_line, last_number, choice, none
+GENERATION = {"max_new_tokens": 64}
+
+# Only if no built-in metric fits (a float, or a dict of named scores):
+def metric(prediction, reference, record):
+    return float(prediction.strip().lower().startswith(reference.lower()))
+```
+
+```bash
+finetune eval task --recipe my_dataset --model outputs/my_dataset/lora --results results/my_study
+finetune eval task --recipe my_dataset --model Qwen/Qwen2.5-1.5B-Instruct --results results/my_study  # zero-shot reference
+finetune report results/my_study --percent
+finetune score predictions.jsonl --metrics exact_match,f1   # score any JSONL, no model needed
+```
+
+Every score comes with a 95% bootstrap interval. Predictions are saved next to the result
+(`*.predictions.jsonl`) for error analysis. To run many models and seeds in one go, see
+[RESEARCH_WORKFLOW.md](RESEARCH_WORKFLOW.md).
+
 ## Checklist for a new dataset
 
 1. `cp _template.py <name>.py` and fill in `NAME`, `FORMAT`, `SOURCE`, and `convert()`.
@@ -102,3 +129,4 @@ For a non-SFT format, start from the matching config in `configs/experiments/` i
 3. `finetune prepare <name> --tokenizer <model>`: are the stats reasonable?
 4. Copy a config, then set `data.train`/`data.eval` and `run.output_dir`.
 5. Run `--dry-run`, then a 5-step run, then the real run.
+6. Set `METRICS` (and `metric()` only if needed); check `finetune eval task --recipe <name> --max-samples 20`.

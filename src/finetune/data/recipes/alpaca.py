@@ -6,6 +6,10 @@ SOURCE = {"hf": "tatsu-lab/alpaca", "split": "train"}
 EVAL_SOURCE = None
 EVAL_RATIO = 0.02
 
+# Evaluation (finetune eval task --recipe alpaca): open-ended answers, so overlap metrics.
+METRICS = ["rouge_l", "f1"]
+GENERATION = {"max_new_tokens": 256}
+
 
 def convert(row: dict):
     instruction = (row.get("instruction") or "").strip()

@@ -76,7 +76,11 @@ def merge_scratch_lora(model):
 
 def merge_for_save(model, output_dir=None):
     """Scratch LoRA: store adapter weights separately, then merge so the saved model
-    loads with the vendored class like any checkpoint. PEFT models save adapters natively."""
+    loads with the vendored class like any checkpoint. PEFT models save adapters natively.
+    Model variants also write variant.json / variant_state.safetensors here."""
+    from finetune.variants import save_variant_files
+
+    save_variant_files(model, output_dir)
     adapters = {n: p.detach().cpu() for n, p in model.named_parameters() if "lora_" in n}
     if adapters and any(isinstance(m, LoRALinear) for m in model.modules()):
         if output_dir is not None:
@@ -111,19 +115,23 @@ def count_parameters(model) -> tuple[int, int]:
 
 @contextlib.contextmanager
 def lora_disabled(model):
-    """Run the frozen base model (the reference policy) by switching adapters off."""
-    if hasattr(model, "disable_adapter"):
-        with model.disable_adapter():
+    """Run the frozen base model (the reference policy) by switching adapters off. Parameters
+    added by a model variant (trained alongside LoRA) are swapped back to their initial values."""
+    from finetune.variants import initial_values
+
+    with initial_values(model):
+        if hasattr(model, "disable_adapter"):
+            with model.disable_adapter():
+                yield
+            return
+        modules = [m for m in model.modules() if isinstance(m, LoRALinear)]
+        if not modules:
+            raise ValueError("Model has no LoRA adapters to disable")
+        scalings = [m.scaling for m in modules]
+        for module in modules:
+            module.scaling = 0.0
+        try:
             yield
-        return
-    modules = [m for m in model.modules() if isinstance(m, LoRALinear)]
-    if not modules:
-        raise ValueError("Model has no LoRA adapters to disable")
-    scalings = [m.scaling for m in modules]
-    for module in modules:
-        module.scaling = 0.0
-    try:
-        yield
-    finally:
-        for module, scaling in zip(modules, scalings):
-            module.scaling = scaling
+        finally:
+            for module, scaling in zip(modules, scalings):
+                module.scaling = scaling

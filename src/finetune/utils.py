@@ -103,6 +103,12 @@ def run_metadata(config, model=None) -> dict:
         base = getattr(model, "base_model", model)
         meta["resolved_model_revision"] = getattr(getattr(base, "config", None), "_commit_hash", None)
         meta["model_class"] = f"{type(base).__module__}.{type(base).__name__}"
+        meta["num_parameters"] = sum(p.numel() for p in model.parameters())
+        from finetune.variants import variant_owner
+
+        owner = variant_owner(model)
+        if owner is not None:
+            meta["variant"] = owner.config.finetune_variant
     for name in ("peft", "accelerate", "datasets", "trl", "deepspeed"):
         try:
             meta[name] = __import__(name).__version__
@@ -113,8 +119,16 @@ def run_metadata(config, model=None) -> dict:
 
 def write_metadata(output_dir: str | Path, config, model=None) -> None:
     if is_main():
+        meta = run_metadata(config, model)
         path = Path(output_dir) / "experiment.json"
-        path.write_text(json.dumps(run_metadata(config, model), indent=2, default=str), encoding="utf-8")
+        path.write_text(json.dumps(meta, indent=2, default=str), encoding="utf-8")
+        if meta.get("variant"):
+            # Archive the exact variant code next to the weights it produced.
+            from finetune.variants import get_variant, source_file
+
+            spec = meta["variant"]
+            source = source_file(get_variant(spec.get("source") or spec["name"]))
+            (Path(output_dir) / "variant_source.py").write_bytes(source.read_bytes())
 
 
 def write_jsonl(path: str | Path, rows) -> None:

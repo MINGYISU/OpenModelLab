@@ -4,7 +4,11 @@
   finetune train configs/experiments/sft_qwen2.5_0.5b_lora.yaml --set train.lr=1e-4
   torchrun --nproc_per_node 4 -m finetune.cli train <config>
   finetune generate --model Qwen/Qwen2.5-0.5B-Instruct --prompt "..."
-  finetune eval <ppl|reasoning|retrieval|benchmarks> ...
+  finetune eval <task|ppl|reasoning|retrieval|benchmarks> ... [--results results/<study>]
+  finetune score preds.jsonl --metrics exact_match,f1               # metrics as a standalone tool
+  finetune report results/<study> --baseline <label> --percent      # tables: markdown, CSV, LaTeX
+  finetune variants [<name> --model tiny:qwen2]                     # your architectures (src/finetune/variants/)
+  finetune study configs/studies/<study>.yaml                       # models x datasets x seeds, end to end
   finetune analyze <weights|kl|logit-lens|cka|router> --base A --tuned B ...
 """
 
@@ -89,6 +93,68 @@ def cmd_eval(args) -> None:
     print(json.dumps(run_eval(args), indent=2))
 
 
+def cmd_score(args) -> None:
+    from finetune.data.io import load_records
+    from finetune.eval.metrics import compute_metrics
+
+    records = load_records(args.predictions)
+    result = compute_metrics([r[args.pred_field] for r in records], [r[args.ref_field] for r in records],
+                             args.metrics.split(","), extract=args.extract, bootstrap=args.bootstrap)
+    result.pop("per_example")
+    print(json.dumps(result, indent=2))
+
+
+def cmd_report(args) -> None:
+    from pathlib import Path
+
+    from finetune.eval.report import build_report
+    from finetune.eval.results import load_results
+
+    report = build_report(load_results(args.results), metrics=args.metrics.split(",") if args.metrics else None,
+                          baseline=args.baseline, percent=args.percent, title=args.title)
+    if args.out:
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "report.md").write_text(report["markdown"], encoding="utf-8")
+        (out / "results.csv").write_text(report["csv"], encoding="utf-8")
+        (out / "table.tex").write_text(report["latex"], encoding="utf-8")
+    print(report["latex"] if args.latex else report["markdown"])
+
+
+def cmd_variants(args) -> None:
+    from finetune.variants import available_variants
+
+    if not args.variant:
+        for name, module in sorted(available_variants().items()):
+            summary = (module.__doc__ or "").strip().splitlines()[0]
+            print(f"{name:16s} {','.join(module.FAMILIES):20s} {summary}")
+        return
+    import torch
+
+    from finetune.config import ModelConfig
+    from finetune.models import build_model
+
+    reference = build_model(ModelConfig(path=args.model, dtype="float32"))
+    model = build_model(ModelConfig(path=args.model, dtype="float32", variant=args.variant,
+                                    variant_args=json.loads(args.args)))
+    spec = model.config.finetune_variant
+    ids = torch.randint(0, min(model.config.vocab_size, 256), (1, 8))
+    with torch.no_grad():
+        model.eval()(ids)
+    print(json.dumps({"title": spec["title"], "args": spec["args"],
+                      "reference_parameters": sum(p.numel() for p in reference.parameters()),
+                      "variant_parameters": sum(p.numel() for p in model.parameters()),
+                      "new_parameters": spec["new_parameters"], "removed_parameters": spec["removed_parameters"],
+                      "changed_config": {k: [v, getattr(model.config, k)] for k, v in spec["reference_config"].items()}},
+                     indent=2, default=str))
+
+
+def cmd_study(args) -> None:
+    from finetune.study import run_study
+
+    run_study(args.study, dry_run=args.dry_run, report_only=args.report_only, rerun=args.rerun)
+
+
 def cmd_analyze(args) -> None:
     from finetune.eval.behavior import run_analysis
 
@@ -96,6 +162,9 @@ def cmd_analyze(args) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from finetune.eval.metrics import EXTRACTORS as EXTRACTOR_NAMES
+    from finetune.eval.metrics import METRICS as METRIC_NAMES
+
     parser = argparse.ArgumentParser(prog="finetune", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -129,21 +198,66 @@ def build_parser() -> argparse.ArgumentParser:
     gen.set_defaults(func=cmd_generate)
 
     ev = sub.add_parser("eval", help="evaluate a model")
-    ev.add_argument("task", choices=["ppl", "reasoning", "retrieval", "benchmarks"])
+    ev.add_argument("task", choices=["task", "ppl", "reasoning", "retrieval", "benchmarks"],
+                    help="task: generate on a dataset's eval split and score it with its metrics")
     _model_args(ev)
-    ev.add_argument("--data", help="JSONL: text (ppl), prompt/answer (reasoning), query/positive (retrieval)")
+    ev.add_argument("--recipe", help="task: dataset recipe (prompts, references, METRICS); data defaults to "
+                                     "data/<recipe>/eval.jsonl")
+    ev.add_argument("--data", help="JSONL: text (ppl), prompt/answer (reasoning, task), messages (task), "
+                                   "query/positive (retrieval)")
+    ev.add_argument("--metrics", help="task: comma-separated metric names (default: the recipe's METRICS)")
+    ev.add_argument("--extract", choices=sorted(EXTRACTOR_NAMES), help="task: prediction cleanup before scoring")
+    ev.add_argument("--system", help="task: system prompt")
+    ev.add_argument("--raw", action="store_true", help="task: do not apply the chat template")
+    ev.add_argument("--bootstrap", type=int, default=1000, help="task: bootstrap samples for 95%% CIs (0 = off)")
     ev.add_argument("--text-field", default="text")
     ev.add_argument("--max-length", type=int, default=1024)
     ev.add_argument("--max-samples", type=int)
     ev.add_argument("--batch-size", type=int, default=8)
     ev.add_argument("--samples", type=int, default=1, help="reasoning: completions per prompt (pass@k)")
-    ev.add_argument("--temperature", type=float, default=0.0)
-    ev.add_argument("--max-new-tokens", type=int, default=1024)
+    ev.add_argument("--temperature", type=float)
+    ev.add_argument("--max-new-tokens", type=int, help="default: 256 (task, or the recipe's GENERATION), 1024 (reasoning)")
     ev.add_argument("--template-kwargs", default="{}")
     ev.add_argument("--pooling", default="mean")
     ev.add_argument("--tasks", default="gsm8k", help="benchmarks: comma-separated lm-eval tasks")
     ev.add_argument("--output", help="write per-example results to this JSONL")
+    ev.add_argument("--results", metavar="DIR", help="store a result record here for `finetune report`")
+    ev.add_argument("--label", help="model name in reports (default: variant title, run name, or model dir)")
+    ev.add_argument("--dataset", help="dataset name in reports (default: recipe or data folder name)")
+    ev.add_argument("--seed", type=int, help="training seed of this model (default: read from experiment.json)")
     ev.set_defaults(func=cmd_eval)
+
+    score = sub.add_parser("score", help="compute metrics for a JSONL of predictions and references")
+    score.add_argument("predictions", help="JSONL with prediction and reference fields")
+    score.add_argument("--metrics", default="exact_match,f1", help=f"comma-separated: {', '.join(sorted(METRIC_NAMES))}")
+    score.add_argument("--pred-field", default="prediction")
+    score.add_argument("--ref-field", default="reference", help="string or list of acceptable strings")
+    score.add_argument("--extract", default="strip_think", choices=sorted(EXTRACTOR_NAMES))
+    score.add_argument("--bootstrap", type=int, default=1000)
+    score.set_defaults(func=cmd_score)
+
+    report = sub.add_parser("report", help="aggregate result records into tables (markdown, CSV, LaTeX)")
+    report.add_argument("results", nargs="+", help="results directories or files")
+    report.add_argument("--metrics", help="comma-separated metrics/columns to include, in order")
+    report.add_argument("--baseline", help="model label to compare against (differences + significance)")
+    report.add_argument("--percent", action="store_true", help="show [0, 1] scores as percentages")
+    report.add_argument("--title", default="Results")
+    report.add_argument("--out", help="write report.md, results.csv, table.tex to this directory")
+    report.add_argument("--latex", action="store_true", help="print the LaTeX table instead of markdown")
+    report.set_defaults(func=cmd_report)
+
+    var = sub.add_parser("variants", help="list model variants, or build one and show what it changes")
+    var.add_argument("variant", nargs="?", help="variant name or .py path")
+    var.add_argument("--model", default="tiny:qwen2", help="reference to apply it to (default: tiny:qwen2)")
+    var.add_argument("--args", default="{}", help='variant args as JSON, e.g. \'{"init": 0.1}\'')
+    var.set_defaults(func=cmd_variants)
+
+    study = sub.add_parser("study", help="run a study (models x datasets x seeds): train -> eval -> report")
+    study.add_argument("study", help="study YAML (see configs/studies/)")
+    study.add_argument("--dry-run", action="store_true", help="print the plan and commands only")
+    study.add_argument("--report-only", action="store_true", help="only rebuild the report from existing results")
+    study.add_argument("--rerun", action="store_true", help="re-run steps that already finished")
+    study.set_defaults(func=cmd_study)
 
     an = sub.add_parser("analyze", help="compare a base and a trained model")
     an.add_argument("analysis", choices=["weights", "kl", "logit-lens", "cka", "router"])

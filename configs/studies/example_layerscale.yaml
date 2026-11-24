@@ -1,0 +1,40 @@
+# Example study: do architecture changes help a 0.5B model after the same fine-tuning?
+# Walkthrough: docs/RESEARCH_WORKFLOW.md
+#   finetune prepare alpaca --tokenizer Qwen/Qwen2.5-0.5B-Instruct --max-length 1024
+#   finetune study configs/studies/example_layerscale.yaml --dry-run    # check the plan
+#   finetune study configs/studies/example_layerscale.yaml              # train -> eval -> report
+# Results: results/example-layerscale/report.md, results.csv, table.tex
+# Paths other than train_config are relative to the directory you run from (the repo root).
+name: example-layerscale
+train_config: sft_full.yaml            # shared by every trained model (relative to this file)
+launcher: scripts/train.sh             # all visible GPUs via torchrun; "python" = one process/GPU
+seeds: [1, 2, 3]                       # >= 3 seeds to report mean ± std
+set: []                                # overrides for every run, e.g. [train.epochs=1]
+
+datasets:
+  - alpaca                             # recipe -> data/alpaca/{train,eval}.jsonl, METRICS from the recipe
+  # - {name: my_qa, recipe: my_qa, metrics: [exact_match, f1]}
+  # - {name: custom, train: data/x/train.jsonl, eval: data/x/eval.jsonl}
+
+models:
+  # References: the vendored models, untouched.
+  - {label: Qwen2.5-0.5B-Instruct, path: Qwen/Qwen2.5-0.5B-Instruct, train: false}   # zero-shot
+  - {label: Qwen2.5-0.5B + SFT, path: Qwen/Qwen2.5-0.5B-Instruct}                    # the baseline
+  # Your models: reference weights + an architecture variant, trained identically.
+  - {label: LayerScale-LM, path: Qwen/Qwen2.5-0.5B-Instruct, variant: layerscale}
+  - {label: LayerScale-LM (attn only), path: Qwen/Qwen2.5-0.5B-Instruct, variant: layerscale,
+     variant_args: {branches: [attn]}}                                                # ablation
+  - {label: NoGLU-LM, path: Qwen/Qwen2.5-0.5B-Instruct, variant: no_glu}
+  - {label: Pruned-LM (-4 layers), path: Qwen/Qwen2.5-0.5B-Instruct, variant: drop_layers,
+     variant_args: {drop: [-5, -4, -3, -2]}}
+
+eval:
+  max_samples: 500                     # same examples for every model (paired significance tests)
+  max_new_tokens: 256
+  batch_size: 16
+  # metrics: [rouge_l]                 # override the recipe's METRICS for every dataset
+
+report:
+  baseline: Qwen2.5-0.5B + SFT
+  percent: true
+  title: Architecture variants of Qwen2.5-0.5B after SFT on Alpaca

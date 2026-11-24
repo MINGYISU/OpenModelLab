@@ -10,6 +10,7 @@ import torch
 from finetune.config import ModelConfig
 from finetune.data.tokenizer import load_tokenizer
 from finetune.models import build_model
+from finetune.variants import load_variant_state, read_spec_file
 
 
 def device() -> torch.device:
@@ -32,7 +33,14 @@ def load_for_inference(path: str, revision: str | None = None, adapter: str | No
         adapter, path = path, _adapter_base(path)
     if not torch.cuda.is_available():
         dtype = "float32"
-    model = build_model(ModelConfig(path=path, revision=revision, dtype=dtype), causal_lm=causal_lm)
+    # A LoRA run on a variant saves the variant spec (and its new parameters) next to the adapter.
+    spec = read_spec_file(adapter) if adapter else None
+    model_cfg = ModelConfig(path=path, revision=revision, dtype=dtype)
+    if spec:
+        model_cfg.variant, model_cfg.variant_args = spec.get("source") or spec["name"], spec["args"]
+    model = build_model(model_cfg, causal_lm=causal_lm)
+    if spec:
+        load_variant_state(model, adapter)
     tokenizer = load_tokenizer(ModelConfig(path=adapter or path, revision=None if adapter else revision),
                                padding_side="left")
     if adapter:
@@ -44,13 +52,18 @@ def load_for_inference(path: str, revision: str | None = None, adapter: str | No
     return model.to(device()).eval(), tokenizer
 
 
+def _as_messages(prompt) -> list[dict]:
+    return list(prompt) if isinstance(prompt, (list, tuple)) else [{"role": "user", "content": prompt}]
+
+
 def format_prompts(tokenizer, prompts, chat: bool = True, template_kwargs=None, system: str | None = None):
+    """Each prompt is a user string or a list of {role, content} messages (a conversation prefix)."""
     if not chat:
-        return list(prompts)
+        return [p if isinstance(p, str) else "\n\n".join(m["content"] for m in p) for p in prompts]
     if not tokenizer.chat_template:
         raise ValueError("Tokenizer has no chat template; pass chat=False (--raw) for base models")
     head = [{"role": "system", "content": system}] if system else []
-    return [tokenizer.apply_chat_template(head + [{"role": "user", "content": p}], tokenize=False,
+    return [tokenizer.apply_chat_template(head + _as_messages(p), tokenize=False,
                                           add_generation_prompt=True, **(template_kwargs or {})) for p in prompts]
 
 

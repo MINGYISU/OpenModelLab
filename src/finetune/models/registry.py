@@ -61,13 +61,17 @@ def get_family(name: str) -> Family:
     return Family(name, *(getattr(module, cls) for cls in FAMILY_CLASSES[name]))
 
 
-def read_model_type(path: str, revision: str | None = None) -> str:
+def read_config_json(path: str, revision: str | None = None) -> dict:
     local = Path(path) / "config.json"
     if local.exists():
-        return json.loads(local.read_text())["model_type"]
+        return json.loads(local.read_text())
     from huggingface_hub import hf_hub_download
 
-    return json.loads(Path(hf_hub_download(path, "config.json", revision=revision)).read_text())["model_type"]
+    return json.loads(Path(hf_hub_download(path, "config.json", revision=revision)).read_text())
+
+
+def read_model_type(path: str, revision: str | None = None) -> str:
+    return read_config_json(path, revision)["model_type"]
 
 
 def resolve_family(path: str, family: str | None = None, revision: str | None = None) -> Family:
@@ -96,28 +100,98 @@ def build_model(model_cfg, *, causal_lm: bool = True, dtype: str | None = None):
 
     `path: tiny:<family>` builds a tiny random model (no download). `init: scratch`
     builds a randomly initialised model from the checkpoint's config (pre-training).
+    `variant` applies a model variant (src/finetune/variants/) to the built reference model;
+    checkpoints saved from a variant are recognised and rebuilt automatically.
     """
+    from finetune.variants import SPEC_KEY, apply_variant, get_variant
+
     family = resolve_family(model_cfg.path, model_cfg.family, model_cfg.revision)
     cls = family.causal_lm_class if causal_lm else family.base_model_class
     torch_dtype = _dtype(dtype or model_cfg.dtype)
     attn = model_cfg.attn_implementation
-    if model_cfg.path.startswith("tiny:"):
-        config = tiny_config(family.name, **model_cfg.config_overrides)
+    tiny = model_cfg.path.startswith("tiny:")
+    saved = None if tiny else read_config_json(model_cfg.path, model_cfg.revision).get(SPEC_KEY)
+    variant, variant_args = model_cfg.variant, model_cfg.variant_args
+    if saved and model_cfg.init == "pretrained":
+        if variant and variant not in (saved["name"], saved.get("source")):
+            raise ValueError(f"{model_cfg.path} is a {saved['name']!r} checkpoint; stacking variant {variant!r} "
+                             "on top of it is not supported")
+        if variant_args and variant_args != saved["args"]:
+            raise ValueError(f"{model_cfg.path} was saved with variant_args={saved['args']}; got {variant_args}")
+        return _load_variant_checkpoint(model_cfg, family, cls, saved, torch_dtype)
+    if saved:  # init: scratch from a variant checkpoint's config: start from its reference config
+        variant = variant or saved.get("source") or saved["name"]
+        variant_args = variant_args or saved["args"]
+    overrides = {**(getattr(get_variant(variant), "CONFIG", {}) if variant else {}), **model_cfg.config_overrides}
+
+    if tiny:
+        config = tiny_config(family.name, **overrides)
         config._attn_implementation = attn
-        return cls(config).to(torch_dtype)
-    if model_cfg.init == "scratch":
+        model = cls(config)
+    elif model_cfg.init == "scratch":
         base = family.config_class.from_pretrained(model_cfg.path, revision=model_cfg.revision)
-        values = {**base.to_dict(), **model_cfg.config_overrides}
-        if "num_hidden_layers" in model_cfg.config_overrides and "layer_types" not in model_cfg.config_overrides:
+        values = {**base.to_dict(), **(saved or {}).get("reference_config", {}), **overrides}
+        if "num_hidden_layers" in overrides and "layer_types" not in overrides:
             values.pop("layer_types", None)  # per-layer list is re-derived for the new depth
-        for key in ("model_type", "transformers_version", "architectures", "_name_or_path"):
+        for key in ("model_type", "transformers_version", "architectures", "_name_or_path", SPEC_KEY):
             values.pop(key, None)
         config = family.config_class(**values)
         config._attn_implementation = attn
-        return cls(config).to(torch_dtype)
-    if model_cfg.init != "pretrained":
+        model = cls(config)
+    elif model_cfg.init == "pretrained":
+        model = cls.from_pretrained(
+            model_cfg.path, revision=model_cfg.revision, dtype=torch_dtype,
+            attn_implementation=attn, use_safetensors=True, **overrides,
+        )
+    else:
         raise ValueError("model.init must be 'pretrained' or 'scratch'")
-    return cls.from_pretrained(
-        model_cfg.path, revision=model_cfg.revision, dtype=torch_dtype,
-        attn_implementation=attn, use_safetensors=True, **model_cfg.config_overrides,
-    )
+    if variant:
+        apply_variant(model, family.name, variant, variant_args)
+    # from_pretrained already loaded in `torch_dtype` (and keeps any fp32-pinned modules).
+    return model if not tiny and model_cfg.init == "pretrained" else model.to(torch_dtype)
+
+
+def _checkpoint_state_dict(path: str, revision: str | None) -> dict:
+    from safetensors.torch import load_file
+
+    root = Path(path)
+    if not root.is_dir():
+        from huggingface_hub import snapshot_download
+
+        root = Path(snapshot_download(path, revision=revision, allow_patterns=["*.json", "*.safetensors"]))
+    index = root / "model.safetensors.index.json"
+    files = sorted(set(json.loads(index.read_text())["weight_map"].values())) if index.exists() else ["model.safetensors"]
+    state = {}
+    for name in files:
+        state.update(load_file(str(root / name)))
+    return state
+
+
+def _load_variant_checkpoint(model_cfg, family: Family, cls, spec: dict, torch_dtype):
+    """Rebuild the reference architecture, re-apply the variant, then load the trained weights."""
+    from finetune.variants import SPEC_KEY, apply_variant
+
+    config = family.config_class.from_pretrained(model_cfg.path, revision=model_cfg.revision)
+    for key, value in {**spec.get("reference_config", {}), **model_cfg.config_overrides}.items():
+        setattr(config, key, value)
+    if hasattr(config, SPEC_KEY):
+        delattr(config, SPEC_KEY)
+    config._attn_implementation = model_cfg.attn_implementation
+    model = cls(config)
+    apply_variant(model, family.name, spec.get("source") or spec["name"], spec["args"], spec.get("sha256"))
+
+    state = _checkpoint_state_dict(model_cfg.path, model_cfg.revision)
+    prefix = getattr(cls, "base_model_prefix", "model") + "."
+    is_base = not hasattr(model, "lm_head")
+    if is_base and any(k.startswith(prefix) for k in state):  # base model from a *ForCausalLM checkpoint
+        state = {k[len(prefix):]: v for k, v in state.items() if k.startswith(prefix)}
+    elif not is_base and not any(k.startswith(prefix) for k in state):  # *ForCausalLM from a base checkpoint
+        state = {prefix + k: v for k, v in state.items()}
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    if getattr(config, "tie_word_embeddings", False):
+        missing = [k for k in missing if k != "lm_head.weight"]
+        model.tie_weights()
+    if missing or unexpected:
+        raise ValueError(f"Variant checkpoint {model_cfg.path} does not match the rebuilt model: "
+                         f"missing {missing[:5]}, unexpected {unexpected[:5]}")
+    return model.to(torch_dtype)

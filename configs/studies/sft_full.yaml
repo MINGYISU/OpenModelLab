@@ -1,0 +1,18 @@
+# Shared training config for configs/studies/example_layerscale.yaml. The study sets run.*,
+# model.path, model.variant(_args), and data.train/eval for every run.
+# Full fine-tuning: architecture changes alter every layer, so all weights should adapt.
+base: ../base.yaml
+data:
+  max_length: 1024
+  loss_on: assistant
+lora: {enabled: false}
+train:
+  stage: sft
+  epochs: 1
+  per_device_batch_size: 8
+  grad_accum: 2
+  lr: 1.0e-5
+  warmup_ratio: 0.03
+  eval_steps: 200
+  save_steps: 1000
+  save_total_limit: 1
