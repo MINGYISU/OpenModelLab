@@ -47,6 +47,12 @@ source .venv/bin/activate
 python -m unittest discover -s tests   # CPU-only, offline (~30 s)
 ```
 
+GitHub Actions runs this suite on pushes and pull requests that change Python source or tests,
+YAML configs, example datasets, scripts, dependency files, `.python-version`, or the
+[test workflow](.github/workflows/tests.yml). Documentation-only and other unrelated updates
+do not trigger it. CI uses the locked `ml` dependencies and runs tests on CPU with Hugging Face
+network access disabled.
+
 FlashAttention-2 is optional and requires a compatible CUDA/PyTorch toolchain and GPU. Install
 the core dependencies first, then build/install the backend without build isolation so it can use
 the installed PyTorch:
