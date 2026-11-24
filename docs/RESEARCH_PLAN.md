@@ -40,7 +40,7 @@ Two parallel outcomes:
 ```text
 src/finetune/
   models/                     # vendored, pinned model source (scripts/vendor_models.py)
-    qwen2/ qwen3/ llama/ deepseek_v2/ deepseek_v3/   # configuration_*.py + modeling_*.py
+    qwen2/ qwen3/ llama/ deepseek_v2/ deepseek_v3/ glm4/ glm4_moe/ qwen2_5_vl/ siglip2/ janus/   # configuration_*.py + modeling_*.py
     registry.py                # family -> classes; build_model() without AutoModel; tiny configs
     VENDORED.md                # upstream version, rules, local-edit log
   data/

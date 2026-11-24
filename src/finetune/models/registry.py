@@ -18,6 +18,13 @@ FAMILY_CLASSES = {
     "llama": ("LlamaConfig", "LlamaModel", "LlamaForCausalLM"),
     "deepseek_v2": ("DeepseekV2Config", "DeepseekV2Model", "DeepseekV2ForCausalLM"),
     "deepseek_v3": ("DeepseekV3Config", "DeepseekV3Model", "DeepseekV3ForCausalLM"),
+    "glm4": ("Glm4Config", "Glm4Model", "Glm4ForCausalLM"),
+    "glm4_moe": ("Glm4MoeConfig", "Glm4MoeModel", "Glm4MoeForCausalLM"),
+    # Multimodal: the third class is the generation head (image+text -> text, or image tokens for Janus).
+    "qwen2_5_vl": ("Qwen2_5_VLConfig", "Qwen2_5_VLModel", "Qwen2_5_VLForConditionalGeneration"),
+    "janus": ("JanusConfig", "JanusModel", "JanusForConditionalGeneration"),
+    # Dual-encoder (contrastive image/text embeddings); has no generation head.
+    "siglip2": ("Siglip2Config", "Siglip2Model", None),
 }
 
 _COMMON_TINY = dict(
@@ -43,6 +50,35 @@ TINY_CONFIGS = {
         q_lora_rank=32, qk_rope_head_dim=8, qk_nope_head_dim=8, v_head_dim=16,
         n_group=2, topk_group=1, num_mtp_layers=0,
     ),
+    "glm4": dict(_COMMON_TINY, head_dim=16, pad_token_id=0, eos_token_id=1),
+    "glm4_moe": dict(
+        _COMMON_TINY, head_dim=16, pad_token_id=0, eos_token_id=1, moe_intermediate_size=32, n_routed_experts=4, n_shared_experts=1,
+        num_experts_per_tok=2, first_k_dense_replace=1, n_group=1, topk_group=1,
+    ),
+    "qwen2_5_vl": dict(
+        text_config=dict(_COMMON_TINY, rope_parameters={"rope_type": "default", "rope_theta": 10000.0,
+                                                        "mrope_section": [2, 3, 3]}),
+        vision_config=dict(depth=2, hidden_size=32, intermediate_size=64, num_heads=2, out_hidden_size=64,
+                           patch_size=4, temporal_patch_size=2, spatial_merge_size=2, window_size=16,
+                           fullatt_block_indexes=[1]),
+        image_token_id=300, video_token_id=301, vision_start_token_id=302, vision_end_token_id=303,
+        tie_word_embeddings=False,
+    ),
+    "janus": dict(
+        text_config=dict(_COMMON_TINY),
+        vision_config=dict(hidden_size=32, intermediate_size=64, num_hidden_layers=2, num_attention_heads=2,
+                           image_size=16, patch_size=4, projection_dim=64, num_image_tokens=16),
+        vq_config=dict(embed_dim=8, num_embeddings=32, base_channels=32, channel_multiplier=[1, 1],
+                       num_res_blocks=1, latent_channels=8, projection_dim=64, image_token_embed_dim=64,
+                       num_patches=4),
+        image_token_id=300,
+    ),
+    "siglip2": dict(
+        text_config=dict(vocab_size=320, hidden_size=32, intermediate_size=64, num_hidden_layers=2,
+                         num_attention_heads=2, max_position_embeddings=64),
+        vision_config=dict(hidden_size=32, intermediate_size=64, num_hidden_layers=2, num_attention_heads=2,
+                           patch_size=4, num_patches=16),
+    ),
 }
 
 
@@ -51,14 +87,14 @@ class Family:
     name: str
     config_class: type
     base_model_class: type
-    causal_lm_class: type
+    causal_lm_class: type | None  # None for encoder-only families (siglip2)
 
 
 def get_family(name: str) -> Family:
     if name not in FAMILY_CLASSES:
         raise ValueError(f"No vendored model for family {name!r}; available: {sorted(FAMILY_CLASSES)}")
     module = importlib.import_module(f"finetune.models.{name}")
-    return Family(name, *(getattr(module, cls) for cls in FAMILY_CLASSES[name]))
+    return Family(name, *(getattr(module, cls) if cls else None for cls in FAMILY_CLASSES[name]))
 
 
 def read_config_json(path: str, revision: str | None = None) -> dict:
@@ -107,6 +143,8 @@ def build_model(model_cfg, *, causal_lm: bool = True, dtype: str | None = None):
 
     family = resolve_family(model_cfg.path, model_cfg.family, model_cfg.revision)
     cls = family.causal_lm_class if causal_lm else family.base_model_class
+    if cls is None:
+        raise ValueError(f"Family {family.name!r} has no generation head; build it with causal_lm=False")
     torch_dtype = _dtype(dtype or model_cfg.dtype)
     attn = model_cfg.attn_implementation
     tiny = model_cfg.path.startswith("tiny:")

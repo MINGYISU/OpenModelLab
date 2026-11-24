@@ -15,7 +15,7 @@ from pathlib import Path
 
 import transformers
 
-FAMILIES = ["qwen2", "qwen3", "llama", "deepseek_v2", "deepseek_v3"]
+FAMILIES = ["qwen2", "qwen3", "llama", "deepseek_v2", "deepseek_v3", "glm4", "glm4_moe", "qwen2_5_vl", "siglip2", "janus"]
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "src" / "finetune" / "models"
 UPSTREAM = Path(transformers.__file__).parent / "models"

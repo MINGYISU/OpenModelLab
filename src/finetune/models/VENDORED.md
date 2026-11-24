@@ -12,7 +12,15 @@ and saving), attention kernels, caching, masking utilities, generation and `Trai
 | `qwen3` | `transformers/models/qwen3/` | Qwen3 dense (hybrid thinking) |
 | `llama` | `transformers/models/llama/` | Llama 3.x, SmolLM2, other Llama-style models |
 | `deepseek_v2` | `transformers/models/deepseek_v2/` | DeepSeek-V2 / V2-Lite (MLA + MoE) |
-| `deepseek_v3` | `transformers/models/deepseek_v3/` | DeepSeek-V3 / R1 architecture (MLA + MoE + MTP) |
+| `deepseek_v3` | `transformers/models/deepseek_v3/` | DeepSeek-V3 / R1 architecture (MLA + MoE + MTP); also Kimi-K2 / K2-Thinking and Moonlight-16B-A3B (`model_type: deepseek_v3`) |
+| `glm4` | `transformers/models/glm4/` | GLM-4-0414, GLM-Z1 (dense) |
+| `glm4_moe` | `transformers/models/glm4_moe/` | GLM-4.5 / 4.5-Air / 4.6 (MoE) |
+| `qwen2_5_vl` | `transformers/models/qwen2_5_vl/` | Qwen2.5-VL (image/video + text -> text); base for GME / VLM2Vec / jina-v4 embedders |
+| `siglip2` | `transformers/models/siglip2/` | SigLIP2 dual encoder (contrastive image/text embeddings; no generation head, use `causal_lm=False`) |
+| `janus` | `transformers/models/janus/` | Janus / Janus-Pro (image understanding + image-token generation) |
+
+Only `configuration_*.py` and `modeling_*.py` are vendored. Multimodal processors
+(image preprocessing, tokenizers) still come from `transformers`.
 
 ## Rules
 
@@ -38,4 +46,7 @@ and saving), attention kernels, caching, masking utilities, generation and `Trai
 
 ## Local edits
 
-None yet.
+- `janus/modeling_janus.py` (2026-11-24): `JanusModel.language_model` is built with the
+  vendored `finetune.models.llama.LlamaModel` instead of `transformers.AutoModel`, so no
+  upstream model class is used. Weight names are unchanged; parity is checked by
+  `tests/test_models.py`. Re-vendoring reverts this; re-apply it afterwards.

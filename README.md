@@ -49,7 +49,7 @@ python -m unittest discover -s tests   # CPU-only, offline (~30 s)
 
 ```text
 src/finetune/
-  models/        vendored qwen2, qwen3, llama, deepseek_v2, deepseek_v3 + registry (build without AutoModel)
+  models/        vendored qwen2, qwen3, llama, deepseek_v2/v3 (+Kimi-K2), glm4, glm4_moe, qwen2_5_vl, siglip2, janus + registry (build without AutoModel)
   variants/      your architectures as edits of a reference: layerscale, no_glu, drop_layers, _template
   data/          JSONL/HF loading, chat-template SFT masks, packing, preference, RL, contrastive, collators
   data/recipes/  one module per dataset: preprocessing + METRICS (finetune prepare / eval task)
