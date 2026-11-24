@@ -1,5 +1,9 @@
+import json
 import os
+import tempfile
+import textwrap
 import unittest
+from pathlib import Path
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
@@ -9,6 +13,7 @@ from finetune.data.contrastive import build_contrastive_dataset
 from finetune.data.io import check_no_overlap
 from finetune.data.preference import tokenize_preference
 from finetune.data.pretrain import build_pretrain_dataset, pack_token_stream
+from finetune.data.recipes import available_recipes, get_recipe, prepare, validate_record
 from finetune.data.rl import build_rl_dataset, normalize_answer
 from finetune.data.sft import IGNORE_INDEX, tokenize_conversation
 from finetune.data.tokenizer import tiny_tokenizer
@@ -108,6 +113,60 @@ class OtherFormatsTest(unittest.TestCase):
     def test_overlap_check(self):
         with self.assertRaisesRegex(ValueError, "1 evaluation records"):
             check_no_overlap([{"a": 1}, {"a": 2}], [{"a": 2}])
+
+
+class RecipeTest(unittest.TestCase):
+    def write_recipe(self, directory, body):
+        path = Path(directory) / "toy.py"
+        path.write_text(textwrap.dedent(body), encoding="utf-8")
+        return get_recipe(str(path))
+
+    def test_prepare_validates_dedupes_across_splits_and_writes_jsonl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [{"q": "a", "r": "1"}, {"q": "a", "r": "1"}, {"q": "b", "r": ""}, {"q": "c", "r": "3"},
+                    {"q": "", "r": "x"}]
+            Path(tmp, "raw.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+            Path(tmp, "raw_eval.jsonl").write_text(json.dumps({"q": "c", "r": "3"}), encoding="utf-8")
+            recipe = self.write_recipe(tmp, f"""
+                FORMAT = "sft"
+                SOURCE = {str(Path(tmp, "raw.jsonl"))!r}
+                EVAL_SOURCE = {str(Path(tmp, "raw_eval.jsonl"))!r}
+                def convert(row):
+                    if not row["q"]:
+                        return None
+                    return {{"messages": [{{"role": "user", "content": row["q"]}},
+                                          {{"role": "assistant", "content": row["r"]}}]}}
+            """)
+            stats = prepare(recipe, Path(tmp, "out"))
+            self.assertEqual((stats["train"], stats["eval"]), (1, 1))
+            # duplicate "a" row + train "c" that leaks into eval; empty answer is invalid; empty q skipped
+            self.assertEqual((stats["duplicate"], stats["invalid"], stats["skipped_by_recipe"]), (2, 1, 1))
+            train = [json.loads(line) for line in Path(tmp, "out", "train.jsonl").read_text().splitlines()]
+            self.assertEqual(train[0]["messages"][0]["content"], "a")
+
+    def test_prepare_drops_overlength_sft_and_splits_eval(self):
+        tokenizer = tiny_tokenizer()
+        with tempfile.TemporaryDirectory() as tmp:
+            recipe = self.write_recipe(tmp, """
+                FORMAT = "sft"
+                def load(split):
+                    return None if split == "eval" else [{"n": n} for n in (1, 2, 3, 400)]
+                def convert(row):
+                    return {"messages": [{"role": "user", "content": "x" * row["n"]},
+                                         {"role": "assistant", "content": "ok"}]}
+            """)
+            stats = prepare(recipe, tmp, eval_ratio=0.34, tokenizer=tokenizer, max_length=200)
+            self.assertEqual((stats["too_long"], stats["train"], stats["eval"]), (1, 2, 1))
+
+    def test_bundled_recipes_load_and_hh_rlhf_parses_transcripts(self):
+        self.assertTrue({"alpaca", "hh_rlhf"} <= set(available_recipes()))
+        record = get_recipe("hh_rlhf").convert({
+            "chosen": "\n\nHuman: hi\n\nAssistant: hello\n\nHuman: joke?\n\nAssistant: good one",
+            "rejected": "\n\nHuman: hi\n\nAssistant: hello\n\nHuman: joke?\n\nAssistant: no",
+        })
+        validate_record(record, "preference")
+        self.assertEqual(len(record["prompt"]), 3)
+        self.assertEqual(record["chosen"], [{"role": "assistant", "content": "good one"}])
 
 
 if __name__ == "__main__":

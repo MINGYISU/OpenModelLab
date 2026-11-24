@@ -8,6 +8,10 @@ measure **how each training stage changes a model's behavior**.
 The research roadmap and experiment matrix are in [docs/RESEARCH_PLAN.md](docs/RESEARCH_PLAN.md);
 learning notes live in [docs/notes/](docs/notes/).
 
+**Just want to fine-tune on your own data?** Read [docs/ADDING_A_DATASET.md](docs/ADDING_A_DATASET.md):
+write a small recipe for the dataset, run `finetune prepare <name>`, copy
+`configs/templates/sft_my_dataset.yaml`, and train.
+
 Design:
 
 - **Vendored model source**: `src/finetune/models/<family>/modeling_*.py` are copied

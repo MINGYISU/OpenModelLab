@@ -1,5 +1,6 @@
 """Command-line entry point.
 
+  finetune prepare alpaca --tokenizer Qwen/Qwen2.5-1.5B-Instruct   # dataset recipe -> data/alpaca/*.jsonl
   finetune train configs/experiments/sft_qwen2.5_0.5b_lora.yaml --set train.lr=1e-4
   torchrun --nproc_per_node 4 -m finetune.cli train <config>
   finetune generate --model Qwen/Qwen2.5-0.5B-Instruct --prompt "..."
@@ -37,6 +38,31 @@ def cmd_train(args) -> None:
     if is_main():
         dump_config(config, f"{config.run.output_dir}/resolved_config.json")
         print(json.dumps(metrics, indent=2, default=str))
+
+
+def cmd_prepare(args) -> None:
+    import itertools
+
+    from finetune.data.recipes import available_recipes, get_recipe, iter_rows, prepare, recipe_name
+
+    if args.list or not args.recipe:
+        for name, module in sorted(available_recipes().items()):
+            print(f"{name:20s} {module.FORMAT:12s} {(module.__doc__ or '').strip().splitlines()[0]}")
+        return
+    recipe = get_recipe(args.recipe)
+    if args.peek:
+        for row in itertools.islice(iter_rows(recipe, "train"), args.peek):
+            print(json.dumps({"raw": row, "converted": recipe.convert(row)}, ensure_ascii=False, default=str, indent=2))
+        return
+    tokenizer = None
+    if args.tokenizer:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
+    stats = prepare(recipe, args.out_dir or f"data/{recipe_name(recipe)}", eval_ratio=args.eval_ratio,
+                    max_samples=args.max_samples, seed=args.seed, tokenizer=tokenizer,
+                    max_length=args.max_length, template_kwargs=json.loads(args.template_kwargs))
+    print(json.dumps(stats, indent=2))
 
 
 def _model_args(parser) -> None:
@@ -79,6 +105,19 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override a config value")
     train.add_argument("--dry-run", action="store_true", help="print the resolved config and exit")
     train.set_defaults(func=cmd_train)
+
+    prep = sub.add_parser("prepare", help="convert a dataset with its recipe (src/finetune/data/recipes/)")
+    prep.add_argument("recipe", nargs="?", help="recipe name or path to a recipe .py file")
+    prep.add_argument("--list", action="store_true", help="list available recipes")
+    prep.add_argument("--peek", type=int, default=0, metavar="N", help="print N raw rows and their conversion, write nothing")
+    prep.add_argument("--out-dir", help="default: data/<recipe>")
+    prep.add_argument("--eval-ratio", type=float, help="held-out fraction when the recipe has no EVAL_SOURCE")
+    prep.add_argument("--max-samples", type=int, help="cap records per split (quick trials)")
+    prep.add_argument("--seed", type=int, default=42)
+    prep.add_argument("--tokenizer", help="SFT: drop examples longer than --max-length under this chat template")
+    prep.add_argument("--max-length", type=int, default=2048)
+    prep.add_argument("--template-kwargs", default="{}", help='JSON, e.g. \'{"enable_thinking": false}\'')
+    prep.set_defaults(func=cmd_prepare)
 
     gen = sub.add_parser("generate", help="generate completions (greedy unless --temperature > 0)")
     _model_args(gen)

@@ -1,0 +1,25 @@
+# TEMPLATE: fine-tune an instruct model on your own dataset with LoRA.
+# Copy this file, edit the lines marked <-- , then:
+#   finetune train configs/templates/sft_my_dataset.yaml --dry-run   # check the resolved config
+#   scripts/train.sh configs/templates/sft_my_dataset.yaml           # train (all visible GPUs)
+# Full walkthrough: docs/ADDING_A_DATASET.md
+base: ../base.yaml
+run:
+  name: my-dataset-lora                       # <-- experiment name
+  output_dir: outputs/my_dataset/lora         # <-- where the adapter + logs are saved
+model:
+  path: Qwen/Qwen2.5-1.5B-Instruct            # <-- any supported model (Qwen2/2.5/3, Llama, DeepSeek); must have a chat template
+data:
+  train: data/my_dataset/train.jsonl          # <-- written by: finetune prepare my_dataset
+  eval: data/my_dataset/eval.jsonl
+  max_length: 2048                            # longer examples raise an error; filter them when preparing data
+  loss_on: assistant                          # learn only the answers, not the prompts
+lora: {enabled: true, r: 16, alpha: 32, dropout: 0.05, target_modules: all-linear}
+train:
+  stage: sft
+  epochs: 3                                   # <-- 1-3 for large datasets (>10k), 3-5 for small ones
+  per_device_batch_size: 4                    # lower this if you run out of GPU memory...
+  grad_accum: 4                               # ...and raise this to keep the effective batch size
+  lr: 2.0e-4                                  # LoRA default; use ~1e-5 if you set lora.enabled: false
+  eval_steps: 100
+  save_steps: 500
