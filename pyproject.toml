@@ -1,7 +1,7 @@
 [project]
-name = "finetune-research"
+name = "openmodellab"
 version = "0.2.0"
-description = "Research codebase for pre-training, embedding, and post-training open LLMs with vendored model source"
+description = "OpenModelLab: reproducible research on open LLM architectures, training, and evaluation"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["pyyaml>=6.0"]

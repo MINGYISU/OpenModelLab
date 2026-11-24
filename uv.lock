@@ -668,56 +668,6 @@ wheels = [
 ]
 
 [[package]]
-name = "finetune-research"
-version = "0.2.0"
-source = { editable = "." }
-dependencies = [
-    { name = "pyyaml" },
-]
-
-[package.optional-dependencies]
-dist = [
-    { name = "deepspeed" },
-]
-eval = [
-    { name = "lm-eval" },
-    { name = "mteb" },
-]
-ml = [
-    { name = "accelerate" },
-    { name = "datasets" },
-    { name = "peft" },
-    { name = "safetensors" },
-    { name = "tensorboard" },
-    { name = "torch" },
-    { name = "transformers" },
-]
-quant = [
-    { name = "bitsandbytes" },
-]
-rl = [
-    { name = "trl" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "accelerate", marker = "extra == 'ml'", specifier = "==1.15.0" },
-    { name = "bitsandbytes", marker = "extra == 'quant'" },
-    { name = "datasets", marker = "extra == 'ml'", specifier = "==5.2.0" },
-    { name = "deepspeed", marker = "extra == 'dist'", specifier = "==0.20.0" },
-    { name = "lm-eval", marker = "extra == 'eval'" },
-    { name = "mteb", marker = "extra == 'eval'" },
-    { name = "peft", marker = "extra == 'ml'", specifier = "==0.21.3" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "safetensors", marker = "extra == 'ml'" },
-    { name = "tensorboard", marker = "extra == 'ml'" },
-    { name = "torch", marker = "extra == 'ml'", specifier = "==2.15.0" },
-    { name = "transformers", marker = "extra == 'ml'", specifier = "==5.23.0" },
-    { name = "trl", marker = "extra == 'rl'", specifier = "==1.18.0" },
-]
-provides-extras = ["ml", "rl", "dist", "eval", "quant"]
-
-[[package]]
 name = "frozenlist"
 version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2071,6 +2021,56 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/49/ee/16bde09927e7ffacd50b117cd7d1dc764d145f03249fc41fdf6dfba3301f/nvidia_nvtx-13.2.86-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:968ce72baee2a01791c7d3254000eac81f24677b0b91c62d21b449a1f309c245", size = 153463, upload-time = "2026-07-16T09:41:23.242Z" },
     { url = "https://files.pythonhosted.org/packages/52/5f/74e2d29240de30a971d59ca20f4a3c4f2720cd49752809eeb4177d385c2c/nvidia_nvtx-13.2.86-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:1c6ae1be92fba569dd271f7b9b3056f99f5642726dc6c53d1b93ae4110c398fb", size = 154292, upload-time = "2026-07-16T09:40:53.791Z" },
 ]
+
+[[package]]
+name = "openmodellab"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+dist = [
+    { name = "deepspeed" },
+]
+eval = [
+    { name = "lm-eval" },
+    { name = "mteb" },
+]
+ml = [
+    { name = "accelerate" },
+    { name = "datasets" },
+    { name = "peft" },
+    { name = "safetensors" },
+    { name = "tensorboard" },
+    { name = "torch" },
+    { name = "transformers" },
+]
+quant = [
+    { name = "bitsandbytes" },
+]
+rl = [
+    { name = "trl" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "accelerate", marker = "extra == 'ml'", specifier = "==1.15.0" },
+    { name = "bitsandbytes", marker = "extra == 'quant'" },
+    { name = "datasets", marker = "extra == 'ml'", specifier = "==5.2.0" },
+    { name = "deepspeed", marker = "extra == 'dist'", specifier = "==0.20.0" },
+    { name = "lm-eval", marker = "extra == 'eval'" },
+    { name = "mteb", marker = "extra == 'eval'" },
+    { name = "peft", marker = "extra == 'ml'", specifier = "==0.21.3" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "safetensors", marker = "extra == 'ml'" },
+    { name = "tensorboard", marker = "extra == 'ml'" },
+    { name = "torch", marker = "extra == 'ml'", specifier = "==2.15.0" },
+    { name = "transformers", marker = "extra == 'ml'", specifier = "==5.23.0" },
+    { name = "trl", marker = "extra == 'rl'", specifier = "==1.18.0" },
+]
+provides-extras = ["ml", "rl", "dist", "eval", "quant"]
 
 [[package]]
 name = "packaging"

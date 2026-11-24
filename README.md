@@ -1,6 +1,6 @@
-# FineTune
+# OpenModelLab
 
-A research codebase for **pre-training, continued pre-training, embedding training,
+OpenModelLab is a research codebase for **pre-training, continued pre-training, embedding training,
 and post-training (SFT, DPO, GRPO)** of open LLMs (Qwen2/2.5, Qwen3,
 DeepSeek-R1-Distill, DeepSeek-V2/V3, and Llama-style models). It also includes tools to
 measure **how each training stage changes a model's behavior**.
