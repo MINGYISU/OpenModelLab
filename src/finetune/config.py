@@ -37,7 +37,7 @@ class ModelConfig:
     variant: str | None = None         # your architecture: name in src/finetune/variants/ or a .py path
     variant_args: dict = field(default_factory=dict)  # overrides the variant's ARGS (ablations)
     dtype: str = "bfloat16"            # "bfloat16", "float16", "float32"
-    attn_implementation: str = "sdpa"  # "eager", "sdpa", "flash_attention_2"
+    attn_implementation: str = "sdpa"  # "eager", "sdpa", or "flash_attention_2" (requires flash-attn)
     gradient_checkpointing: bool = False
 
 

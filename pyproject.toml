@@ -20,6 +20,7 @@ rl = ["trl==1.18.0"]
 dist = ["deepspeed==0.20.0"]
 eval = ["lm-eval", "mteb"]
 quant = ["bitsandbytes"]
+flash = ["flash-attn"]
 
 [project.scripts]
 finetune = "finetune.cli:main"

@@ -668,6 +668,16 @@ wheels = [
 ]
 
 [[package]]
+name = "flash-attn"
+version = "2.8.3.post2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "einops" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6c/b1/b77625e3d11260d2bd6a4fc249a4be9a3da97ff848e2222e810c4f0e0211/flash_attn-2.8.3.post2.tar.gz", hash = "sha256:d0f9f0b08a986cdeadbffcf5ec8b3a8f514366c68ad1853d3ab061bc83cc340b", size = 8453127, upload-time = "2026-10-14T01:37:12.132Z" }
+
+[[package]]
 name = "frozenlist"
 version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2038,6 +2048,9 @@ eval = [
     { name = "lm-eval" },
     { name = "mteb" },
 ]
+flash = [
+    { name = "flash-attn" },
+]
 ml = [
     { name = "accelerate" },
     { name = "datasets" },
@@ -2060,6 +2073,7 @@ requires-dist = [
     { name = "bitsandbytes", marker = "extra == 'quant'" },
     { name = "datasets", marker = "extra == 'ml'", specifier = "==5.2.0" },
     { name = "deepspeed", marker = "extra == 'dist'", specifier = "==0.20.0" },
+    { name = "flash-attn", marker = "extra == 'flash'" },
     { name = "lm-eval", marker = "extra == 'eval'" },
     { name = "mteb", marker = "extra == 'eval'" },
     { name = "peft", marker = "extra == 'ml'", specifier = "==0.21.3" },
@@ -2070,7 +2084,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'ml'", specifier = "==5.23.0" },
     { name = "trl", marker = "extra == 'rl'", specifier = "==1.18.0" },
 ]
-provides-extras = ["ml", "rl", "dist", "eval", "quant"]
+provides-extras = ["ml", "rl", "dist", "eval", "quant", "flash"]
 
 [[package]]
 name = "packaging"
@@ -2280,6 +2294,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "polars-runtime-32" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/83/a3/69b118378276da546b6721b6b41a35c5a3de87f39c75779e4ef289f1aa56/polars-2.2.0.tar.gz", hash = "sha256:fce26202b9b6c3b6f4139dccef29ed46303d9461d30d9dab9965cc552e44c8b1", size = 925113, upload-time = "2026-11-24T18:18:26.64Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/03/bd/f7e92f928be51649fb5ab5b230a5a1ff86c43402836b8989d16c6491fe75/polars-2.2.0-py3-none-any.whl", hash = "sha256:892770de126ceb0233e7dee9084c69bd49dd3c8939f90c4a53eb7b5dc735d60f", size = 1031193, upload-time = "2026-11-24T18:15:56.74Z" },
 ]
@@ -2288,6 +2303,7 @@ wheels = [
 name = "polars-runtime-32"
 version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/28/bd0d5105c29fc0531bbaa2f12e079beed0af6a6499ca2a813c22d81b4da8/polars_runtime_32-2.2.0.tar.gz", hash = "sha256:cdc981fc9b4b046b5abf1fd79b5f09e41ecdcdf3017d394fedcc77c7567e2e41", size = 4426825, upload-time = "2026-11-24T18:18:27.86Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/08/a2/e324c50dc6946cdc0545df232a5e074ebfb4e892b54f2bc54f4be92dd30a/polars_runtime_32-2.2.0-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:f5ab0b343284506a11b01b77b70324772f65547e48043f272bb93aba83911559", size = 50759576, upload-time = "2026-11-24T18:15:59.757Z" },
     { url = "https://files.pythonhosted.org/packages/43/29/e8c98673ab4a88fedf7bca8b45d937bb01998e25c9b160b4e242d6c6a395/polars_runtime_32-2.2.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:d4a718a61f58fe852c7770c7a706966d1830518dcb57aac9527eb7fa33924684", size = 45552326, upload-time = "2026-11-24T18:16:02.948Z" },

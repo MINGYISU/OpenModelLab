@@ -47,6 +47,15 @@ source .venv/bin/activate
 python -m unittest discover -s tests   # CPU-only, offline (~30 s)
 ```
 
+FlashAttention-2 is optional and requires a compatible CUDA/PyTorch toolchain and GPU. Install
+the core dependencies first, then build/install the backend without build isolation so it can use
+the installed PyTorch:
+
+```bash
+uv sync --extra ml
+uv pip install --no-build-isolation '.[flash]'
+```
+
 Optional dependency groups can be included as needed:
 
 ```bash
@@ -97,6 +106,9 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 scripts/train.sh configs/experiments/e1_sft_full_qw
 
 # Override anything from the command line; print the resolved config without training:
 finetune train configs/experiments/e4_dpo_qwen2.5_0.5b_ultrafeedback.yaml --set dpo.beta=0.3 --dry-run
+
+# Enable FlashAttention-2 for a run (install the optional `flash` extra first):
+finetune train configs/experiments/e1_sft_lora_qwen2.5_1.5b.yaml --set model.attn_implementation=flash_attention_2
 
 # Multi-node (SLURM, or MASTER_ADDR/NNODES/NODE_RANK without SLURM):
 sbatch --nodes 2 scripts/train_multinode.sbatch configs/experiments/e6_cpt_qwen2.5_1.5b_math_replay.yaml
