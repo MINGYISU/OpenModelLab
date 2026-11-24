@@ -38,11 +38,29 @@ Design:
 
 ## Setup
 
+With [uv](https://docs.astral.sh/uv/), install the core training dependencies and activate
+the project environment:
+
+```bash
+uv sync --extra ml                 # torch, transformers, peft, accelerate, datasets
+source .venv/bin/activate
+python -m unittest discover -s tests   # CPU-only, offline (~30 s)
+```
+
+Optional dependency groups can be included as needed:
+
+```bash
+uv sync --extra ml --extra rl --extra dist --extra eval
+# Add --extra quant for bitsandbytes
+```
+
+Alternatively, use Conda and pip:
+
 ```bash
 conda create -n finetune python=3.12 -y && conda activate finetune
 pip install -e '.[ml]'            # torch, transformers, peft, accelerate, datasets
 pip install -e '.[rl,dist,eval]'  # optional: trl, deepspeed, lm-eval + mteb
-python -m unittest discover -s tests   # CPU-only, offline (~30 s)
+python -m unittest discover -s tests
 ```
 
 ## Layout
