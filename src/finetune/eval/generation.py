@@ -23,12 +23,28 @@ def _adapter_base(path: str) -> str | None:
 
 
 def load_for_inference(path: str, revision: str | None = None, adapter: str | None = None,
-                       dtype: str = "bfloat16", causal_lm: bool = True, merge: bool = False):
+                       dtype: str = "bfloat16", causal_lm: bool = True, merge: bool = False,
+                       backend: str = "transformers", tensor_parallel_size: int = 1):
     """Load a hub/local checkpoint through the vendored classes.
 
     `path` may be a PEFT adapter directory (its base model is read from adapter_config.json),
     or pass the base as `path` and the adapter as `adapter`. `merge=True` folds LoRA into W.
+    The vLLM backend supports standard checkpoints, not PEFT adapters or project variants.
     """
+    if backend == "vllm":
+        if not causal_lm:
+            raise ValueError("The vLLM inference backend supports text generation only")
+        if adapter is not None or _adapter_base(path):
+            raise ValueError("The vLLM inference backend does not currently support PEFT adapters")
+        from finetune.eval.vllm_inference import load_model
+
+        model = load_model(path, revision=revision, dtype=dtype,
+                           tensor_parallel_size=tensor_parallel_size)
+        tokenizer = load_tokenizer(ModelConfig(path=path, revision=revision), padding_side="left")
+        return model, tokenizer
+    if backend != "transformers":
+        raise ValueError(f"Unknown inference backend {backend!r}; choose 'transformers' or 'vllm'")
+
     if adapter is None and _adapter_base(path):
         adapter, path = path, _adapter_base(path)
     if not torch.cuda.is_available():
@@ -69,9 +85,20 @@ def format_prompts(tokenizer, prompts, chat: bool = True, template_kwargs=None, 
 
 @torch.no_grad()
 def generate(model, tokenizer, prompts, max_new_tokens=256, temperature=0.0, top_p=1.0, num_samples=1,
-             chat=True, template_kwargs=None, batch_size=8, system=None) -> list:
+             chat=True, template_kwargs=None, batch_size=8, system=None, backend="transformers") -> list:
     """Returns one string per prompt (num_samples=1) or a list of strings per prompt."""
     texts = format_prompts(tokenizer, prompts, chat, template_kwargs, system)
+    if backend == "vllm":
+        from finetune.eval.vllm_inference import generate as vllm_generate
+
+        results = []
+        for start in range(0, len(texts), batch_size):
+            results.extend(vllm_generate(model, texts[start:start + batch_size], max_new_tokens,
+                                         temperature, top_p, num_samples))
+        return results
+    if backend != "transformers":
+        raise ValueError(f"Unknown inference backend {backend!r}; choose 'transformers' or 'vllm'")
+
     tokenizer.padding_side = "left"
     results = []
     for start in range(0, len(texts), batch_size):

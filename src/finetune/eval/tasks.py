@@ -68,14 +68,15 @@ def task_settings(recipe, records: list[dict], args) -> dict:
 
 
 def run_task(model, tokenizer, records: list[dict], settings: dict, recipe=None, batch_size: int = 8,
-             chat: bool = True, template_kwargs=None, bootstrap: int = 1000) -> tuple[dict, list[dict]]:
+             chat: bool = True, template_kwargs=None, bootstrap: int = 1000,
+             backend: str = "transformers") -> tuple[dict, list[dict]]:
     from finetune.eval.generation import generate
 
     prompts, references = build_examples(records, recipe)
     gen = settings["generation"]
     predictions = generate(model, tokenizer, prompts, gen["max_new_tokens"], gen["temperature"],
                            chat=chat, template_kwargs=template_kwargs, batch_size=batch_size,
-                           system=gen.get("system"))
+                           system=gen.get("system"), backend=backend)
     result = compute_metrics(predictions, references, settings["metrics"], extract=settings["extract"],
                              bootstrap=bootstrap, custom=getattr(recipe, "metric", None), records=records)
     rows = [{"prompt": p, "reference": r, "prediction": o,

@@ -74,15 +74,21 @@ def _model_args(parser) -> None:
     parser.add_argument("--revision")
     parser.add_argument("--adapter", help="PEFT adapter directory to apply on top of --model")
     parser.add_argument("--dtype", default="bfloat16")
+    parser.add_argument("--inference-backend", choices=("transformers", "vllm"), default="transformers",
+                        help="text generation backend (vLLM supports standard checkpoints only)")
+    parser.add_argument("--tensor-parallel-size", type=int, default=1,
+                        help="number of GPUs for vLLM tensor parallelism")
 
 
 def cmd_generate(args) -> None:
     from finetune.eval.generation import generate, load_for_inference
 
-    model, tokenizer = load_for_inference(args.model, args.revision, args.adapter, args.dtype)
+    model, tokenizer = load_for_inference(args.model, args.revision, args.adapter, args.dtype,
+                                          backend=args.inference_backend,
+                                          tensor_parallel_size=args.tensor_parallel_size)
     outputs = generate(model, tokenizer, args.prompt, max_new_tokens=args.max_new_tokens,
                        temperature=args.temperature, chat=not args.raw,
-                       template_kwargs=json.loads(args.template_kwargs))
+                       template_kwargs=json.loads(args.template_kwargs), backend=args.inference_backend)
     for prompt, output in zip(args.prompt, outputs):
         print(json.dumps({"prompt": prompt, "output": output}, ensure_ascii=False))
 
@@ -274,13 +280,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _single_process_gpu() -> None:
+def _single_process_gpu(preserve_visible_gpus: bool = False) -> None:
     """Without torchrun, Trainer would silently use legacy nn.DataParallel over all visible
     GPUs (which mis-scales token-normalised losses). Pin single-process runs to one GPU;
-    use torchrun for multi-GPU (DDP/FSDP/DeepSpeed)."""
+    use torchrun for multi-GPU training. vLLM inference manages visible GPUs itself."""
     import os
 
-    if "LOCAL_RANK" in os.environ:
+    if "LOCAL_RANK" in os.environ or preserve_visible_gpus:
         return
     visible = os.environ.get("CUDA_VISIBLE_DEVICES")
     if visible is None or "," in visible:
@@ -289,7 +295,10 @@ def _single_process_gpu() -> None:
 
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
-    _single_process_gpu()
+    _single_process_gpu(preserve_visible_gpus=(
+        getattr(args, "command", None) in {"generate", "eval"}
+        and getattr(args, "inference_backend", "transformers") == "vllm"
+    ))
     args.func(args)
 
 

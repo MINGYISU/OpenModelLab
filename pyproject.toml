@@ -22,6 +22,7 @@ dist = ["deepspeed==0.20.0"]
 eval = ["lm-eval", "mteb"]
 quant = ["bitsandbytes"]
 flash = ["flash-attn"]
+vllm = ["vllm==0.34.0"]
 
 [project.scripts]
 finetune = "finetune.cli:main"
@@ -32,3 +33,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.uv]
+conflicts = [
+    [
+        { package = "openmodellab", extra = "ml" },
+        { package = "openmodellab", extra = "vllm" },
+    ],
+]

@@ -12,8 +12,12 @@ from finetune.utils import write_jsonl
 def _load(args, **kwargs):
     from finetune.eval.generation import load_for_inference
 
-    model, tokenizer = load_for_inference(args.model, args.revision, args.adapter, args.dtype, **kwargs)
-    args.num_parameters = sum(p.numel() for p in model.parameters())
+    backend = getattr(args, "inference_backend", "transformers")
+    model, tokenizer = load_for_inference(args.model, args.revision, args.adapter, args.dtype,
+                                          backend=backend,
+                                          tensor_parallel_size=getattr(args, "tensor_parallel_size", 1),
+                                          **kwargs)
+    args.num_parameters = sum(p.numel() for p in model.parameters()) if backend == "transformers" else None
     return model, tokenizer
 
 
@@ -29,7 +33,8 @@ def _task(args) -> tuple[dict, list[dict], dict, str]:
     settings = task_settings(recipe, records, args)
     model, tokenizer = _load(args)
     result, rows = run_task(model, tokenizer, records, settings, recipe, args.batch_size, chat=not args.raw,
-                            template_kwargs=json.loads(args.template_kwargs), bootstrap=args.bootstrap)
+                            template_kwargs=json.loads(args.template_kwargs), bootstrap=args.bootstrap,
+                            backend=getattr(args, "inference_backend", "transformers"))
     settings.update(data=str(data), max_samples=args.max_samples)
     dataset = args.dataset or (recipe_name(recipe) if recipe else Path(data).parent.name or Path(data).stem)
     return result, rows, settings, dataset
@@ -37,6 +42,10 @@ def _task(args) -> tuple[dict, list[dict], dict, str]:
 
 def run_eval(args) -> dict:
     """Run one evaluation; with --results also store a result record for `finetune report`."""
+    backend = getattr(args, "inference_backend", "transformers")
+    if backend == "vllm" and args.task not in {"task", "reasoning"}:
+        raise ValueError("The vLLM inference backend is available only for eval task and eval reasoning")
+
     rows, settings = None, {}
     dataset = args.dataset or (Path(args.data).parent.name if args.data else args.task)
     if args.task == "task":
@@ -60,6 +69,7 @@ def run_eval(args) -> dict:
 
 
 def _standard_eval(args) -> dict:
+    backend = getattr(args, "inference_backend", "transformers")
     records = load_records(args.data, args.max_samples) if args.data else []
     max_new_tokens = args.max_new_tokens or 1024
     temperature = args.temperature or 0.0
@@ -80,7 +90,7 @@ def _standard_eval(args) -> dict:
         answers = [normalize_answer(r["answer"]) for r in records]
         outputs = generate(model, tokenizer, prompts, max_new_tokens, temperature,
                            num_samples=args.samples, batch_size=args.batch_size,
-                           template_kwargs=json.loads(args.template_kwargs))
+                           template_kwargs=json.loads(args.template_kwargs), backend=backend)
         completions = [o if isinstance(o, list) else [o] for o in outputs]
         summary, rows = score(prompts, answers, completions, tokenizer)
         if args.output:

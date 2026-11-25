@@ -67,6 +67,11 @@ Optional dependency groups can be included as needed:
 ```bash
 uv sync --extra ml --extra rl --extra dist --extra eval
 # Add --extra quant for bitsandbytes
+# vLLM uses incompatible PyTorch/Transformers pins; install it in a separate environment:
+UV_PROJECT_ENVIRONMENT=.venv-vllm uv sync --extra vllm
+UV_PROJECT_ENVIRONMENT=.venv-vllm uv run --extra vllm finetune generate \
+  --inference-backend vllm --tensor-parallel-size 2 \
+  --model Qwen/Qwen2.5-0.5B-Instruct --prompt "Explain LoRA."
 ```
 
 Alternatively, use Conda and pip:
@@ -162,9 +167,12 @@ finetune study configs/studies/smoke.yaml       # a whole study (models x datase
 
 finetune generate --model Qwen/Qwen2.5-0.5B-Instruct --prompt "Explain LoRA."
 finetune generate --model outputs/e1/lora-r8 --prompt "Explain LoRA."      # PEFT dir: base read automatically
+finetune generate --inference-backend vllm --tensor-parallel-size 2 \
+    --model Qwen/Qwen2.5-0.5B-Instruct --prompt "Explain LoRA."
 finetune eval ppl --model outputs/e6/replay0.05 --data heldout.jsonl
 finetune eval reasoning --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B --data gsm8k_test.jsonl \
     --samples 8 --temperature 0.6 --max-new-tokens 4096 --output samples.jsonl   # pass@k, think length, "wait" counts
+finetune eval task --inference-backend vllm --recipe alpaca --model Qwen/Qwen2.5-0.5B-Instruct
 finetune eval reasoning --model Qwen/Qwen3-1.7B --data gsm8k_test.jsonl --template-kwargs '{"enable_thinking": false}'
 finetune eval retrieval --model outputs/embed/nq --data heldout_pairs.jsonl
 finetune eval benchmarks --model outputs/e1/full --tasks gsm8k,mmlu         # lm-eval with the vendored model
@@ -177,6 +185,13 @@ finetune analyze router     --base ... --tuned ... --data texts.jsonl           
 ```
 
 Use `--output result.json` for the full tables (per parameter or per expert).
+
+The optional `--inference-backend vllm` accelerates text generation and task/reasoning evaluation
+for standard checkpoints supported by vLLM. Transformers remains the default. The current vLLM
+extra is incompatible with the project's pinned `ml` extra, so use a separate environment as
+shown above. vLLM inference currently does not support PEFT adapters, project model variants, or
+tiny test models; training, perplexity, retrieval, and lm-eval benchmarks continue to use their
+existing implementations.
 
 ## Licensing
 
