@@ -178,6 +178,15 @@ finetune analyze router     --base ... --tuned ... --data texts.jsonl           
 
 Use `--output result.json` for the full tables (per parameter or per expert).
 
+## Licensing
+
+The original OpenModelLab project code is licensed under Apache-2.0 (see
+[LICENSE](LICENSE)). Vendored third-party source retains its upstream copyright
+and license notices. Model checkpoints, tokenizers, datasets, and other third-party
+materials have their own terms; this repository's license does not change or grant
+rights under those separate licenses. Check the applicable terms before using or
+redistributing them.
+
 ## Reproducibility and responsible use
 
 Pin `model.revision` to a commit SHA for published results, keep data under the
